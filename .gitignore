@@ -4,14 +4,22 @@
 __pycache__/
 *.pyc
 
+# Data files
+*.csv
 data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 data/bad_records/*
 
 
+# Logs and outputs
 ingestion/logs/*
 spark/event-logs/*
 spark/jobs/output/
-
 *.log
+
+# OS & Temp files
+.DS_Store
+~$*
+Thumbs.db
+
