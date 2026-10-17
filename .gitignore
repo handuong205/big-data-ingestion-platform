@@ -6,6 +6,9 @@ __pycache__/
 
 data/raw/*
 !data/raw/.gitkeep
+data/processed/*
+data/bad_records/*
+
 
 ingestion/logs/*
 spark/event-logs/*
