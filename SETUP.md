@@ -173,6 +173,7 @@ Nếu đã có môi trường Python phù hợp, có thể sử dụng môi trư
 ```text
 boto3
 python-dotenv
+kagglehub[pandas-datasets]
 ```
 
 Cài đặt và kiểm tra:
@@ -180,26 +181,54 @@ Cài đặt và kiểm tra:
 ```powershell
 python -m pip install -r ingestion/requirements.txt
 python --version
-python -c "import boto3, dotenv; print('Dependencies OK')"
+python -c "import boto3, dotenv, kagglehub; print('Dependencies OK')"
 ```
 
 Nếu hiện `Dependencies OK`, các thư viện đã sẵn sàng.
 
-## 9. Chuẩn bị và nạp dữ liệu CSV
+## 9. Tải và nạp dữ liệu CSV
 
-Đặt 5 file CSV của nhóm vào:
+Dataset Amazon Books Reviews được tải bằng KaggleHub. Không dùng
+`load_dataset(..., file_path="")`: tham số file rỗng không xác định được file cần
+đọc và có thể gây lỗi khi dataset có nhiều file.
+
+Trước lần tải đầu tiên, cấu hình Kaggle credentials theo
+[Kaggle API documentation](https://www.kaggle.com/docs/api). Sau đó chạy tại thư
+mục gốc:
+
+```powershell
+python .\ingestion\download_kaggle_dataset.py
+```
+
+Script tải dataset `mohamedbakhet/amazon-books-reviews` vào KaggleHub cache,
+kiểm tra đủ hai file nguồn rồi sao chép về:
+
+```text
+data/raw/books_data.csv
+data/raw/Books_rating.csv
+```
+
+Muốn tải lại bản mới từ Kaggle:
+
+```powershell
+python .\ingestion\download_kaggle_dataset.py --force
+```
+
+Nếu chỉ có sẵn file CSV từ nguồn khác, có thể đặt chúng trực tiếp vào
+`data/raw/` với đúng hai tên trên.
+
+Kiểm tra:
 
 ```text
 data/raw/
 ```
 
-Kiểm tra:
-
 ```powershell
 Get-ChildItem .\data\raw\*.csv
 ```
 
-Tổng dung lượng dự kiến khoảng 2.43 GB; hãy xác nhận dung lượng thực tế trước khi chạy.
+Tổng dung lượng dataset có thể rất lớn; hãy xác nhận dung lượng trống trước khi
+tải và chạy Spark.
 
 Đảm bảo MinIO đang hoạt động:
 
@@ -221,7 +250,8 @@ Theo thiết kế dự kiến, script sẽ:
 5. Ghi dung lượng, thời gian thực thi và trạng thái.
 6. Kiểm tra kích thước và metadata sau upload.
 
-Object dự kiến có đường dẫn `raw-data/raw/<ten-file>.csv`, tùy cấu hình thực tế trong script.
+Object dự kiến có đường dẫn `raw-data/raw/books/books_data.csv` và
+`raw-data/raw/reviews/Books_rating.csv`.
 
 ### Kiểm tra kết quả
 
@@ -364,7 +394,7 @@ docker compose down -v
 - [x] Khởi chạy các service bằng Docker Compose.
 - [x] Kiểm tra Spark Master và các Worker.
 - [x] Xác nhận MinIO và PostgreSQL hoạt động.
-- [x] Nạp đủ 5 file CSV vào MinIO.
+- [x] Nạp đủ 2 file CSV (`books_data.csv`, `Books_rating.csv`) vào MinIO.
 - [ ] Ghi nhận dung lượng, thời gian và checksum.
 - [ ] Xác minh tính toàn vẹn dữ liệu.
 - [ ] Lưu log và ảnh chụp màn hình làm minh chứng.
