@@ -16,13 +16,13 @@ Spark được cấu hình theo mô hình Master và hai Worker trong `docker-co
 ## Kiến trúc dữ liệu
 
 ```text
-5 CSV source files
+2 CSV source files (books_data.csv, Books_rating.csv)
         |
         v
 Python Ingestion
         |
         v
-MinIO — raw-data/raw/
+MinIO — raw-data/raw/books/, raw-data/raw/reviews/
         |
         v
 Apache Spark — ETL / Analytics
