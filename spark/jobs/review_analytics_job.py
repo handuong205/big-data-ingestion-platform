@@ -1,0 +1,261 @@
+"""
+========================================================================================
+DỰ ÁN: BDT301 — Big Data Assignment
+MODULE: review_analytics_job.py (PySpark Job 2b - Review Analytics)
+TÁC GIẢ: Thành viên 2 (Tiến) - Spark Core ETL & Review Analytics Lead
+MỤC ĐÍCH: 
+  - Thực thi Job 2b giải quyết các câu hỏi nghiệp vụ chỉ cần sử dụng bảng Reviews sạch:
+      1. Câu hỏi Q3: Tương quan Giá / Độ dài review với Điểm đánh giá và Độ hữu ích.
+      2. Câu hỏi Q4: Trích xuất các Review hữu ích nhất mỗi năm sử dụng Window Function.
+      3. Câu hỏi Q5: Xác định các đầu sách có lượng review lớn nhưng điểm trung bình thấp
+                     (những tựa sách gây thất vọng hoặc tranh cãi nhất).
+  - Đảm bảo tiêu chuẩn Rubric: Thực hiện $\\ge 2$ phép tính tổng hợp (Aggregations) phức tạp
+    kết hợp với Window Function.
+  - Đồng bộ kết quả sang PostgreSQL (Serving Layer) qua JDBC với cơ chế Idempotent (overwrite).
+========================================================================================
+"""
+
+import os
+import sys
+import time
+
+from pyspark.sql import SparkSession, Window
+from pyspark.sql.functions import (
+    col, count, round as spark_round, avg, row_number, trim,
+    when, desc, asc, min as spark_min, max as spark_max
+)
+
+def create_spark_session(app_name="BDT301_TV2_Job2b_Review_Analytics"):
+    """
+    Khởi tạo SparkSession tối ưu cho việc tính toán phân tích và kết nối JDBC.
+    """
+    event_log_dir = os.getenv("SPARK_EVENT_LOG_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "event-logs"))
+    os.makedirs(event_log_dir, exist_ok=True)
+    
+    builder = (
+        SparkSession.builder
+        .appName(app_name)
+        .master(os.getenv("SPARK_MASTER_URL", "local[*]"))
+        .config("spark.driver.memory", "4g")
+        .config("spark.sql.shuffle.partitions", "8")
+        # Ghi nhận Spark Event Log làm minh chứng thực thi
+        .config("spark.eventLog.enabled", "true")
+        .config("spark.eventLog.dir", event_log_dir)
+    )
+    return builder.getOrCreate()
+
+
+def write_to_postgres_or_fallback(df, table_name, base_dir):
+    """
+    Ghi DataFrame vào cơ sở dữ liệu PostgreSQL qua JDBC.
+    Nếu PostgreSQL chưa khởi chạy (ví dụ môi trường test cục bộ), tự động lưu dự phòng dạng Parquet/CSV
+    để job không bị lỗi gián đoạn.
+    """
+    db_host = os.getenv("POSTGRES_HOST", "localhost")
+    db_port = os.getenv("POSTGRES_PORT", "5432")
+    db_name = os.getenv("POSTGRES_DB", "bigdata")
+    db_user = os.getenv("POSTGRES_USER", "bigdata")
+    db_pass = os.getenv("POSTGRES_PASSWORD", "bigdatapassword")
+    
+    jdbc_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
+    
+    try:
+        print(f"[*] Đang đồng bộ bảng '{table_name}' vào PostgreSQL...")
+        (
+            df.write
+            .format("jdbc")
+            .option("url", jdbc_url)
+            .option("dbtable", table_name)
+            .option("user", db_user)
+            .option("password", db_pass)
+            .option("driver", "org.postgresql.Driver")
+            .mode("overwrite")
+            .save()
+        )
+        print(f"  [✓] Ghi thành công bảng '{table_name}' vào PostgreSQL!")
+    except Exception as e:
+        print(f"  [!] Lưu ý: Không thể kết nối PostgreSQL ({e}). Đang lưu bản sao dự phòng...")
+        fallback_dir = os.path.join(base_dir, "data", "serving", table_name)
+        df.write.mode("overwrite").parquet(fallback_dir)
+        print(f"  [✓] Đã lưu bản sao dự phòng tại: {fallback_dir}")
+
+
+def solve_q3_price_and_length_correlation(df_reviews, base_dir):
+    """
+    CÂU HỎI Q3: Phân tích tương quan Giá sách / Độ dài review với Điểm đánh giá và Độ hữu ích.
+    - Chia dữ liệu thành các dải độ dài review:
+        + Ngắn (< 100 ký tự)
+        + Vừa (100 - 300 ký tự)
+        + Dài (300 - 600 ký tự)
+        + Rất dài (> 600 ký tự)
+    - Nếu có trường Giá (price), chia các khoảng giá: <$10, $10-$20, $20-$50, >$50.
+    - Tính toán: avg_score, avg_helpful_votes, total_reviews.
+    """
+    print("\n" + "="*80)
+    print("THỰC THI CÂU HỎI Q3: TƯƠNG QUAN ĐỘ DÀI REVIEW & GIÁ VS ĐIỂM SỐ")
+    print("="*80)
+    
+    # 1. Phân tích theo Dải độ dài bài viết (Áp dụng cho 100% dữ liệu)
+    q3_length_df = (
+        df_reviews
+        .withColumn(
+            "length_band",
+            when(col("review_length") < 100, "1. Short (< 100 chars)")
+            .when((col("review_length") >= 100) & (col("review_length") < 300), "2. Medium (100-300 chars)")
+            .when((col("review_length") >= 300) & (col("review_length") < 600), "3. Long (300-600 chars)")
+            .otherwise("4. Very Long (> 600 chars)")
+        )
+        .groupBy("length_band")
+        .agg(
+            count("*").alias("total_reviews"),
+            spark_round(avg("score"), 2).alias("avg_score"),
+            spark_round(avg("helpful_votes"), 2).alias("avg_helpful_votes"),
+            spark_round(avg("review_length"), 0).alias("avg_length")
+        )
+        .orderBy("length_band")
+    )
+    
+    print("\n[Kết quả Q3: Phân tích theo độ dài review]")
+    q3_length_df.show(truncate=False)
+    write_to_postgres_or_fallback(q3_length_df, "agg_review_length_band", base_dir)
+    
+    # 2. Phân tích theo Dải giá sách (cho các bản ghi có giá hợp lệ)
+    q3_price_df = (
+        df_reviews
+        .filter(col("price").isNotNull() & (col("price") > 0))
+        .withColumn(
+            "price_band",
+            when(col("price") < 10, "1. Under $10")
+            .when((col("price") >= 10) & (col("price") < 20), "2. $10 - $20")
+            .when((col("price") >= 20) & (col("price") < 50), "3. $20 - $50")
+            .otherwise("4. Over $50")
+        )
+        .groupBy("price_band")
+        .agg(
+            count("*").alias("total_reviews"),
+            spark_round(avg("score"), 2).alias("avg_score"),
+            spark_round(avg("helpful_votes"), 2).alias("avg_helpful_votes"),
+            spark_round(avg("price"), 2).alias("avg_actual_price")
+        )
+        .orderBy("price_band")
+    )
+    
+    print("\n[Kết quả Q3: Phân tích theo khoảng giá sách]")
+    q3_price_df.show(truncate=False)
+    write_to_postgres_or_fallback(q3_price_df, "agg_price_band", base_dir)
+
+
+def solve_q4_top_helpful_reviews(df_reviews, base_dir, top_n=10):
+    """
+    CÂU HỎI Q4: Trích xuất các bài review hữu ích nhất mỗi năm sử dụng Window Function.
+    - Kỹ thuật nâng cao: Áp dụng Window.partitionBy("review_year").orderBy(desc("helpful_votes"))
+    - Lọc Top N đánh giá có nhiều lượt bình chọn hữu ích nhất cho từng năm.
+    """
+    print("\n" + "="*80)
+    print(f"THỰC THI CÂU HỎI Q4: TOP {top_n} REVIEW HỮU ÍCH NHẤT MỖI NĂM (WINDOW FUNCTION)")
+    print("="*80)
+    
+    # 1. Khai báo Window Specification phân vùng theo năm và sắp xếp theo lượt vote hữu ích
+    window_spec = Window.partitionBy("review_year").orderBy(desc("helpful_votes"), desc("score"))
+    
+    # 2. Đánh số thứ tự hạng (ranking) cho từng review trong từng năm
+    ranked_reviews = (
+        df_reviews
+        .filter(col("review_year").isNotNull() & (col("helpful_votes") > 0))
+        .withColumn("rank", row_number().over(window_spec))
+        .filter(col("rank") <= top_n)
+        .select(
+            col("review_year"),
+            col("rank"),
+            col("title"),
+            col("user_id"),
+            col("profile_name"),
+            col("score"),
+            col("helpful_votes"),
+            col("total_votes"),
+            col("helpfulness_ratio"),
+            col("review_summary")
+        )
+        .orderBy("review_year", "rank")
+    )
+    
+    print(f"\n[Kết quả Q4: Top {top_n} review hữu ích nhất mỗi năm]")
+    ranked_reviews.show(15, truncate=35)
+    write_to_postgres_or_fallback(ranked_reviews, "top_helpful_reviews", base_dir)
+
+
+def solve_q5_controversial_or_disappointing_books(df_reviews, base_dir, min_reviews=30):
+    """
+    CÂU HỎI Q5: Tìm các đầu sách nhận được lượng thảo luận lớn nhưng điểm trung bình thấp.
+    - Điều kiện: Có từ min_reviews lượt đánh giá trở lên.
+    - Sắp xếp tăng dần theo điểm trung bình để tìm những sách gây tranh cãi hoặc thất vọng nhất.
+    """
+    print("\n" + "="*80)
+    print(f"THỰC THI CÂU HỎI Q5: CÁC ĐẦU SÁCH NHIỀU REVIEW NHƯNG ĐIỂM THẤP (>= {min_reviews} REVIEWS)")
+    print("="*80)
+    
+    q5_df = (
+        df_reviews
+        .filter(col("title").isNotNull() & (trim(col("title")) != ""))
+        .groupBy("title", "title_norm")
+        .agg(
+            count("score").alias("total_reviews"),
+            spark_round(avg("score"), 2).alias("avg_score"),
+            spark_round(avg("helpful_votes"), 1).alias("avg_helpful_votes"),
+            spark_min("score").alias("min_score"),
+            spark_max("score").alias("max_score")
+        )
+        # Lọc các đầu sách có lượng tương tác đáng kể
+        .filter(col("total_reviews") >= min_reviews)
+        # Sắp xếp theo điểm thấp nhất trước
+        .orderBy(asc("avg_score"), desc("total_reviews"))
+    )
+    
+    print("\n[Kết quả Q5: Top 10 cuốn sách gây thất vọng / tranh cãi nhất]")
+    q5_df.show(10, truncate=40)
+    write_to_postgres_or_fallback(q5_df, "book_summary", base_dir)
+
+
+def main():
+    start_time = time.time()
+    
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    # Ưu tiên đọc dữ liệu sạch từ Parquet do Job 1 xuất ra
+    clean_reviews_dir = os.path.join(base_dir, "data", "processed", "reviews_clean")
+    sample_reviews_dir = os.path.join(base_dir, "data", "sample", "sample_reviews.parquet")
+    
+    spark = create_spark_session()
+    
+    try:
+        # Kiểm tra xem đã có dữ liệu Job 1 full chưa, nếu chưa thì chạy trên sample
+        if os.path.exists(clean_reviews_dir):
+            print(f"[*] Đang nạp dữ liệu sạch từ: {clean_reviews_dir}")
+            df_reviews = spark.read.parquet(clean_reviews_dir)
+        elif os.path.exists(sample_reviews_dir):
+            print(f"[*] Đang nạp dữ liệu từ thư mục mẫu: {sample_reviews_dir}")
+            df_reviews = spark.read.parquet(sample_reviews_dir)
+        else:
+            print("[!] Chưa tìm thấy dữ liệu Parquet đã làm sạch. Vui lòng chạy clean_data_job.py hoặc export_sample.py trước!")
+            return
+            
+        print(f"[*] Tổng số bản ghi review nạp vào phân tích: {df_reviews.count():,}")
+        
+        # 1. Thực thi Câu hỏi Q3
+        solve_q3_price_and_length_correlation(df_reviews, base_dir)
+        
+        # 2. Thực thi Câu hỏi Q4 (Window Function)
+        solve_q4_top_helpful_reviews(df_reviews, base_dir, top_n=10)
+        
+        # 3. Thực thi Câu hỏi Q5
+        solve_q5_controversial_or_disappointing_books(df_reviews, base_dir, min_reviews=20)
+        
+        elapsed = time.time() - start_time
+        print(f"\n[✓] Hoàn tất toàn bộ PySpark Job 2b trong {elapsed:.2f} giây!")
+        
+    finally:
+        spark.stop()
+
+
+if __name__ == "__main__":
+    main()
