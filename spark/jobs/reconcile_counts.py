@@ -91,11 +91,14 @@ def reconcile_dataset(spark, name, raw_path, clean_path, bad_path, schema):
 def main():
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
-    books_raw = os.path.join(base_dir, "books_data.csv")
-    books_clean = os.path.join(base_dir, "data", "processed", "books_clean")
-    books_bad = os.path.join(base_dir, "data", "bad_records", "books")
-    
-    reviews_raw = os.path.join(base_dir, "Books_rating.csv")
+    # Ưu tiên tìm trong thư mục chuẩn data/raw/
+    books_raw = os.path.join(base_dir, "data", "raw", "books_data.csv")
+    if not os.path.exists(books_raw):
+        books_raw = os.path.join(base_dir, "books_data.csv")
+        
+    reviews_raw = os.path.join(base_dir, "data", "raw", "Books_rating.csv")
+    if not os.path.exists(reviews_raw):
+        reviews_raw = os.path.join(base_dir, "Books_rating.csv")
     reviews_clean = os.path.join(base_dir, "data", "processed", "reviews_clean")
     reviews_bad = os.path.join(base_dir, "data", "bad_records", "reviews")
     

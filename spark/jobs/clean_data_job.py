@@ -282,8 +282,15 @@ def main():
     total_start = time.time()
     
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    books_input = os.path.join(base_dir, "books_data.csv")
-    reviews_input = os.path.join(base_dir, "Books_rating.csv")
+    
+    # Ưu tiên tìm trong thư mục chuẩn data/raw/
+    books_input = os.path.join(base_dir, "data", "raw", "books_data.csv")
+    if not os.path.exists(books_input):
+        books_input = os.path.join(base_dir, "books_data.csv")
+        
+    reviews_input = os.path.join(base_dir, "data", "raw", "Books_rating.csv")
+    if not os.path.exists(reviews_input):
+        reviews_input = os.path.join(base_dir, "Books_rating.csv")
     
     # Đường dẫn xuất dữ liệu
     clean_books_dir = os.path.join(base_dir, "data", "processed", "books_clean")

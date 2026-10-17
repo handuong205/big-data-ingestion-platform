@@ -168,8 +168,15 @@ def clean_reviews_sample(df_reviews, limit_rows=10000):
 
 def main():
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    books_file = os.path.join(base_dir, "books_data.csv")
-    reviews_file = os.path.join(base_dir, "Books_rating.csv")
+    
+    # Ưu tiên tìm trong thư mục chuẩn data/raw/
+    books_file = os.path.join(base_dir, "data", "raw", "books_data.csv")
+    if not os.path.exists(books_file):
+        books_file = os.path.join(base_dir, "books_data.csv")
+        
+    reviews_file = os.path.join(base_dir, "data", "raw", "Books_rating.csv")
+    if not os.path.exists(reviews_file):
+        reviews_file = os.path.join(base_dir, "Books_rating.csv")
     
     output_dir = os.path.join(base_dir, "data", "sample")
     os.makedirs(output_dir, exist_ok=True)
