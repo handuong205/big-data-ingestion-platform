@@ -24,16 +24,36 @@ from pyspark.sql.functions import (
 )
 from schemas import BOOKS_RAW_SCHEMA, REVIEWS_RAW_SCHEMA, CSV_READ_OPTIONS
 
-def create_spark():
-    """Khởi tạo SparkSession cục bộ cho việc xuất mẫu dữ liệu"""
-    return (
+def create_spark(app_name="BDT301_TV2_Export_Sample"):
+    """Khởi tạo SparkSession cho việc xuất mẫu dữ liệu"""
+    driver_memory = os.getenv("SPARK_DRIVER_MEMORY", "1g")
+    executor_memory = os.getenv("SPARK_EXECUTOR_MEMORY", "1536m")
+    
+    builder = (
         SparkSession.builder
-        .appName("BDT301_TV2_Export_Sample")
-        .master(os.getenv("SPARK_MASTER_URL", "local[2]"))
-        .config("spark.driver.memory", "2g")
+        .appName(app_name)
+        .master(os.getenv("SPARK_MASTER_URL", "local[*]"))
+        .config("spark.driver.memory", driver_memory)
+        .config("spark.executor.memory", executor_memory)
         .config("spark.sql.shuffle.partitions", "4")
-        .getOrCreate()
     )
+    
+    minio_endpoint = os.getenv("MINIO_ENDPOINT")
+    minio_user = os.getenv("MINIO_ROOT_USER")
+    minio_password = os.getenv("MINIO_ROOT_PASSWORD")
+    if minio_endpoint:
+        builder = builder.config("spark.hadoop.fs.s3a.endpoint", minio_endpoint)
+    if minio_user:
+        builder = builder.config("spark.hadoop.fs.s3a.access.key", minio_user)
+    if minio_password:
+        builder = builder.config("spark.hadoop.fs.s3a.secret.key", minio_password)
+        
+    builder = (
+        builder
+        .config("spark.hadoop.fs.s3a.path.style.access", "true")
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+    )
+    return builder.getOrCreate()
 
 
 def clean_books_sample(df_books, limit_rows=1000):
@@ -169,14 +189,20 @@ def clean_reviews_sample(df_reviews, limit_rows=10000):
 def main():
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
-    # Ưu tiên tìm trong thư mục chuẩn data/raw/
-    books_file = os.path.join(base_dir, "data", "raw", "books_data.csv")
-    if not os.path.exists(books_file):
-        books_file = os.path.join(base_dir, "books_data.csv")
+    # Đọc đường dẫn từ biến môi trường
+    books_file = os.getenv("RAW_BOOKS_PATH", os.path.join(base_dir, "data", "raw", "books_data.csv"))
+    if not (books_file.startswith("s3a://") or books_file.startswith("s3://")):
+        if not os.path.exists(books_file):
+            alt_books = os.path.join(base_dir, "books_data.csv")
+            if os.path.exists(alt_books):
+                books_file = alt_books
         
-    reviews_file = os.path.join(base_dir, "data", "raw", "Books_rating.csv")
-    if not os.path.exists(reviews_file):
-        reviews_file = os.path.join(base_dir, "Books_rating.csv")
+    reviews_file = os.getenv("RAW_REVIEWS_PATH", os.path.join(base_dir, "data", "raw", "Books_rating.csv"))
+    if not (reviews_file.startswith("s3a://") or reviews_file.startswith("s3://")):
+        if not os.path.exists(reviews_file):
+            alt_reviews = os.path.join(base_dir, "Books_rating.csv")
+            if os.path.exists(alt_reviews):
+                reviews_file = alt_reviews
     
     output_dir = os.path.join(base_dir, "data", "sample")
     os.makedirs(output_dir, exist_ok=True)

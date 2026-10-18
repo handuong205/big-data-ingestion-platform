@@ -38,21 +38,35 @@ def create_spark_session(app_name="BDT301_TV2_Job1_Clean_Data"):
     event_log_dir = os.getenv("SPARK_EVENT_LOG_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "event-logs"))
     os.makedirs(event_log_dir, exist_ok=True)
     
+    driver_memory = os.getenv("SPARK_DRIVER_MEMORY", "1g")
+    executor_memory = os.getenv("SPARK_EXECUTOR_MEMORY", "1536m")
+    
     builder = (
         SparkSession.builder
         .appName(app_name)
         .master(os.getenv("SPARK_MASTER_URL", "local[*]"))
-        # Tối ưu hóa bộ nhớ
-        .config("spark.driver.memory", "4g")
-        .config("spark.executor.memory", "4g")
+        # Tối ưu hóa bộ nhớ theo cấu hình tài nguyên
+        .config("spark.driver.memory", driver_memory)
+        .config("spark.executor.memory", executor_memory)
         .config("spark.sql.shuffle.partitions", "16")
         # Ghi nhận Spark Event Log để phục vụ bằng chứng thực thi đồ án
         .config("spark.eventLog.enabled", "true")
         .config("spark.eventLog.dir", event_log_dir)
-        # Tương thích với MinIO qua giao thức S3A nếu có
-        .config("spark.hadoop.fs.s3a.endpoint", os.getenv("MINIO_ENDPOINT", "http://localhost:9000"))
-        .config("spark.hadoop.fs.s3a.access.key", os.getenv("MINIO_ROOT_USER", "bigdataadmin"))
-        .config("spark.hadoop.fs.s3a.secret.key", os.getenv("MINIO_ROOT_PASSWORD", "bigdataadminpassword"))
+    )
+
+    # Tương thích với MinIO qua giao thức S3A nếu có biến môi trường
+    minio_endpoint = os.getenv("MINIO_ENDPOINT")
+    minio_user = os.getenv("MINIO_ROOT_USER")
+    minio_password = os.getenv("MINIO_ROOT_PASSWORD")
+    if minio_endpoint:
+        builder = builder.config("spark.hadoop.fs.s3a.endpoint", minio_endpoint)
+    if minio_user:
+        builder = builder.config("spark.hadoop.fs.s3a.access.key", minio_user)
+    if minio_password:
+        builder = builder.config("spark.hadoop.fs.s3a.secret.key", minio_password)
+
+    builder = (
+        builder
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
     )
@@ -283,20 +297,29 @@ def main():
     
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
-    # Ưu tiên tìm trong thư mục chuẩn data/raw/
-    books_input = os.path.join(base_dir, "data", "raw", "books_data.csv")
-    if not os.path.exists(books_input):
-        books_input = os.path.join(base_dir, "books_data.csv")
+    # Đọc đường dẫn từ biến môi trường (hỗ trợ cả MinIO s3a:// trong container và file cục bộ)
+    books_input = os.getenv("RAW_BOOKS_PATH", os.path.join(base_dir, "data", "raw", "books_data.csv"))
+    if not (books_input.startswith("s3a://") or books_input.startswith("s3://")):
+        if not os.path.exists(books_input):
+            alt_books = os.path.join(base_dir, "books_data.csv")
+            if os.path.exists(alt_books):
+                books_input = alt_books
         
-    reviews_input = os.path.join(base_dir, "data", "raw", "Books_rating.csv")
-    if not os.path.exists(reviews_input):
-        reviews_input = os.path.join(base_dir, "Books_rating.csv")
+    reviews_input = os.getenv("RAW_REVIEWS_PATH", os.path.join(base_dir, "data", "raw", "Books_rating.csv"))
+    if not (reviews_input.startswith("s3a://") or reviews_input.startswith("s3://")):
+        if not os.path.exists(reviews_input):
+            alt_reviews = os.path.join(base_dir, "Books_rating.csv")
+            if os.path.exists(alt_reviews):
+                reviews_input = alt_reviews
     
     # Đường dẫn xuất dữ liệu
-    clean_books_dir = os.path.join(base_dir, "data", "processed", "books_clean")
-    bad_books_dir = os.path.join(base_dir, "data", "bad_records", "books")
-    clean_reviews_dir = os.path.join(base_dir, "data", "processed", "reviews_clean")
-    bad_reviews_dir = os.path.join(base_dir, "data", "bad_records", "reviews")
+    processed_dir = os.getenv("PROCESSED_DIR", os.path.join(base_dir, "data", "processed"))
+    bad_records_dir = os.getenv("BAD_RECORDS_DIR", os.path.join(base_dir, "data", "bad_records"))
+    
+    clean_books_dir = os.path.join(processed_dir, "books_clean")
+    bad_books_dir = os.path.join(bad_records_dir, "books")
+    clean_reviews_dir = os.path.join(processed_dir, "reviews_clean")
+    bad_reviews_dir = os.path.join(bad_records_dir, "reviews")
     
     spark = create_spark_session()
     
