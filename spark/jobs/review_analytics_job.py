@@ -32,35 +32,65 @@ def create_spark_session(app_name="BDT301_TV2_Job2b_Review_Analytics"):
     event_log_dir = os.getenv("SPARK_EVENT_LOG_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "event-logs"))
     os.makedirs(event_log_dir, exist_ok=True)
     
+    driver_memory = os.getenv("SPARK_DRIVER_MEMORY", "1g")
+    executor_memory = os.getenv("SPARK_EXECUTOR_MEMORY", "1536m")
+    
     builder = (
         SparkSession.builder
         .appName(app_name)
         .master(os.getenv("SPARK_MASTER_URL", "local[*]"))
-        .config("spark.driver.memory", "4g")
+        .config("spark.driver.memory", driver_memory)
+        .config("spark.executor.memory", executor_memory)
         .config("spark.sql.shuffle.partitions", "8")
         # Ghi nhận Spark Event Log làm minh chứng thực thi
         .config("spark.eventLog.enabled", "true")
         .config("spark.eventLog.dir", event_log_dir)
     )
+
+    # Tương thích với MinIO qua giao thức S3A nếu có
+    minio_endpoint = os.getenv("MINIO_ENDPOINT")
+    minio_user = os.getenv("MINIO_ROOT_USER")
+    minio_password = os.getenv("MINIO_ROOT_PASSWORD")
+    if minio_endpoint:
+        builder = builder.config("spark.hadoop.fs.s3a.endpoint", minio_endpoint)
+    if minio_user:
+        builder = builder.config("spark.hadoop.fs.s3a.access.key", minio_user)
+    if minio_password:
+        builder = builder.config("spark.hadoop.fs.s3a.secret.key", minio_password)
+
+    builder = (
+        builder
+        .config("spark.hadoop.fs.s3a.path.style.access", "true")
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+    )
     return builder.getOrCreate()
 
 
-def write_to_postgres_or_fallback(df, table_name, base_dir):
+def write_to_postgres(df, table_name, base_dir=None):
     """
     Ghi DataFrame vào cơ sở dữ liệu PostgreSQL qua JDBC.
-    Nếu PostgreSQL chưa khởi chạy (ví dụ môi trường test cục bộ), tự động lưu dự phòng dạng Parquet/CSV
-    để job không bị lỗi gián đoạn.
+    Nếu gặp lỗi, raise Exception để dừng toàn bộ pipeline ngay lập tức,
+    không lưu fallback ngầm nhằm đảm bảo tính toàn vẹn và minh bạch của hệ thống.
     """
-    db_host = os.getenv("POSTGRES_HOST", "localhost")
+    db_host = os.getenv("POSTGRES_HOST")
     db_port = os.getenv("POSTGRES_PORT", "5432")
-    db_name = os.getenv("POSTGRES_DB", "bigdata")
-    db_user = os.getenv("POSTGRES_USER", "bigdata")
-    db_pass = os.getenv("POSTGRES_PASSWORD", "bigdatapassword")
+    db_name = os.getenv("POSTGRES_DB")
+    db_user = os.getenv("POSTGRES_USER")
+    db_pass = os.getenv("POSTGRES_PASSWORD")
+    
+    if not (db_host and db_name and db_user and db_pass):
+        missing = [var for var, val in [
+            ("POSTGRES_HOST", db_host),
+            ("POSTGRES_DB", db_name),
+            ("POSTGRES_USER", db_user),
+            ("POSTGRES_PASSWORD", db_pass)
+        ] if not val]
+        raise ValueError(f"Thiếu các biến môi trường bắt buộc của PostgreSQL: {', '.join(missing)}")
     
     jdbc_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
     
     try:
-        print(f"[*] Đang đồng bộ bảng '{table_name}' vào PostgreSQL...")
+        print(f"[*] Đang đồng bộ bảng '{table_name}' vào PostgreSQL ({db_host}:{db_port}/{db_name})...")
         (
             df.write
             .format("jdbc")
@@ -74,10 +104,8 @@ def write_to_postgres_or_fallback(df, table_name, base_dir):
         )
         print(f"  [✓] Ghi thành công bảng '{table_name}' vào PostgreSQL!")
     except Exception as e:
-        print(f"  [!] Lưu ý: Không thể kết nối PostgreSQL ({e}). Đang lưu bản sao dự phòng...")
-        fallback_dir = os.path.join(base_dir, "data", "serving", table_name)
-        df.write.mode("overwrite").parquet(fallback_dir)
-        print(f"  [✓] Đã lưu bản sao dự phòng tại: {fallback_dir}")
+        print(f"  [✗] LỖI NGHIÊM TRỌNG: Không thể kết nối hoặc ghi vào PostgreSQL cho bảng '{table_name}': {e}", file=sys.stderr)
+        raise
 
 
 def solve_q3_price_and_length_correlation(df_reviews, base_dir):
@@ -117,7 +145,7 @@ def solve_q3_price_and_length_correlation(df_reviews, base_dir):
     
     print("\n[Kết quả Q3: Phân tích theo độ dài review]")
     q3_length_df.show(truncate=False)
-    write_to_postgres_or_fallback(q3_length_df, "agg_review_length_band", base_dir)
+    write_to_postgres(q3_length_df, "agg_review_length_band")
     
     # 2. Phân tích theo Dải giá sách (cho các bản ghi có giá hợp lệ)
     q3_price_df = (
@@ -142,7 +170,7 @@ def solve_q3_price_and_length_correlation(df_reviews, base_dir):
     
     print("\n[Kết quả Q3: Phân tích theo khoảng giá sách]")
     q3_price_df.show(truncate=False)
-    write_to_postgres_or_fallback(q3_price_df, "agg_price_band", base_dir)
+    write_to_postgres(q3_price_df, "agg_price_band")
 
 
 def solve_q4_top_helpful_reviews(df_reviews, base_dir, top_n=10):
@@ -181,7 +209,7 @@ def solve_q4_top_helpful_reviews(df_reviews, base_dir, top_n=10):
     
     print(f"\n[Kết quả Q4: Top {top_n} review hữu ích nhất mỗi năm]")
     ranked_reviews.show(15, truncate=35)
-    write_to_postgres_or_fallback(ranked_reviews, "top_helpful_reviews", base_dir)
+    write_to_postgres(ranked_reviews, "top_helpful_reviews")
 
 
 def solve_q5_controversial_or_disappointing_books(df_reviews, base_dir, min_reviews=30):
@@ -213,7 +241,7 @@ def solve_q5_controversial_or_disappointing_books(df_reviews, base_dir, min_revi
     
     print("\n[Kết quả Q5: Top 10 cuốn sách gây thất vọng / tranh cãi nhất]")
     q5_df.show(10, truncate=40)
-    write_to_postgres_or_fallback(q5_df, "book_summary", base_dir)
+    write_to_postgres(q5_df, "book_summary")
 
 
 def main():
@@ -221,25 +249,28 @@ def main():
     
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
-    # Ưu tiên đọc dữ liệu sạch từ Parquet do Job 1 xuất ra
-    clean_reviews_dir = os.path.join(base_dir, "data", "processed", "reviews_clean")
-    sample_reviews_dir = os.path.join(base_dir, "data", "sample", "sample_reviews.parquet")
+    # Đọc đường dẫn từ biến môi trường PROCESSED_DIR
+    processed_dir = os.getenv("PROCESSED_DIR", os.path.join(base_dir, "data", "processed"))
+    clean_reviews_dir = os.path.join(processed_dir, "reviews_clean")
     
     spark = create_spark_session()
     
     try:
-        # Kiểm tra xem đã có dữ liệu Job 1 full chưa, nếu chưa thì chạy trên sample
-        if os.path.exists(clean_reviews_dir):
-            print(f"[*] Đang nạp dữ liệu sạch từ: {clean_reviews_dir}")
-            df_reviews = spark.read.parquet(clean_reviews_dir)
-        elif os.path.exists(sample_reviews_dir):
-            print(f"[*] Đang nạp dữ liệu từ thư mục mẫu: {sample_reviews_dir}")
-            df_reviews = spark.read.parquet(sample_reviews_dir)
-        else:
-            print("[!] Chưa tìm thấy dữ liệu Parquet đã làm sạch. Vui lòng chạy clean_data_job.py hoặc export_sample.py trước!")
-            return
+        # Bắt buộc phải có dữ liệu sạch từ Job 1, không tự động chuyển sang dữ liệu sample
+        if not (clean_reviews_dir.startswith("s3a://") or clean_reviews_dir.startswith("s3://")):
+            if not os.path.exists(clean_reviews_dir):
+                raise FileNotFoundError(
+                    f"[✗] LỖI: Chưa tìm thấy dữ liệu Parquet đã làm sạch tại: {clean_reviews_dir}. "
+                    f"Vui lòng chạy clean_data_job.py trước!"
+                )
+        
+        print(f"[*] Đang nạp dữ liệu sạch từ: {clean_reviews_dir}")
+        df_reviews = spark.read.parquet(clean_reviews_dir)
+        review_count = df_reviews.count()
+        if review_count == 0:
+            raise RuntimeError(f"[✗] LỖI: Dữ liệu reviews tại {clean_reviews_dir} không có bản ghi nào!")
             
-        print(f"[*] Tổng số bản ghi review nạp vào phân tích: {df_reviews.count():,}")
+        print(f"[*] Tổng số bản ghi review nạp vào phân tích: {review_count:,}")
         
         # 1. Thực thi Câu hỏi Q3
         solve_q3_price_and_length_correlation(df_reviews, base_dir)
