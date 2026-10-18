@@ -6,10 +6,10 @@ Dự án xây dựng pipeline Big Data sử dụng Docker Compose, MinIO, Apache
 
 | Service | Image / nguồn build | Vai trò |
 |---|---|---|
-| Apache Spark | `apache/spark:3.5.6` | Xử lý dữ liệu phân tán |
-| MinIO | Build tại máy từ source | Lưu trữ dữ liệu CSV thô (Raw Layer) |
-| PostgreSQL | `postgres:16` | Lưu kết quả phân tích |
-| Metabase | `metabase/metabase:latest` | Trực quan hóa dữ liệu |
+| Apache Spark | `apache/spark:3.5.6-python3` + jar S3A/JDBC (`spark/Dockerfile`) | Xử lý dữ liệu phân tán |
+| MinIO | Build tại máy từ source (`minio/Dockerfile`) | Lưu trữ dữ liệu CSV thô (Raw Layer) |
+| PostgreSQL | `postgres:16.15` | Lưu kết quả phân tích (Serving Layer) |
+| Metabase | `metabase/metabase:v0.63.20.2` | Trực quan hóa dữ liệu |
 
 Spark được cấu hình theo mô hình Master và hai Worker trong `docker-compose.yml`.
 
@@ -47,40 +47,48 @@ Metabase Dashboard
 ```text
 Assignment/
 ├── docker-compose.yml
+├── run_pipeline.sh              # chạy toàn bộ pipeline bằng một lệnh
 ├── .env.example
 ├── README.md
 ├── SETUP.md
 ├── minio/
 │   └── Dockerfile
-├── data/
-│   └── raw/
+├── data/                        # không commit
+│   ├── raw/                     # CSV tải từ Kaggle
+│   ├── processed/               # Parquet đã làm sạch
+│   └── bad_records/             # bản ghi bị loại
 ├── ingestion/
 │   ├── requirements.txt
-│   ├── ingest.py
+│   ├── download_kaggle_dataset.py
+│   ├── ingest.py                # nạp CSV vào MinIO
 │   └── logs/
 ├── spark/
+│   ├── Dockerfile
 │   ├── jobs/
 │   └── event-logs/
 ├── postgres/
+│   └── init.sql
+├── logs/                        # log của run_pipeline.sh
 └── reports/
 ```
 
-Cấu trúc thực tế có thể thay đổi theo code hiện tại của nhóm. Không commit file `.env`, mật khẩu hoặc dữ liệu CSV dung lượng lớn lên GitHub.
+Không commit file `.env`, mật khẩu hoặc dữ liệu CSV lên GitHub.
 
 ## Bắt đầu nhanh
 
-1. Cài Docker Desktop/ Docker Engine với Compose v2 và Git.
-2. Clone repository.
-3. Tạo file `.env` dựa trên `.env.example` nếu repository có cung cấp; nếu không, xem hướng dẫn trong `SETUP.md`.
-4. Tại thư mục chứa `docker-compose.yml`, chạy:
+1. Cài Docker Desktop (Compose v2), Git (kèm Git Bash) và Python 3.10+.
+2. Clone repository, chuyển sang branch `dev`.
+3. `copy .env.example .env`, điền mật khẩu và `KAGGLE_API_TOKEN`.
+4. `python -m pip install -r ingestion/requirements.txt`
+5. Trong **Git Bash**, tại thư mục gốc:
 
-   ```powershell
-   docker compose config
-   docker compose up -d --build
-   docker compose ps
+   ```bash
+   ./run_pipeline.sh
    ```
 
-**Lưu ý về MinIO:** MinIO được build tại máy từ source. Tránh chạy `docker compose pull` thông thường nếu lệnh đó cố pull image MinIO từ registry. Chi tiết cài đặt, ingestion, kiểm tra và xử lý lỗi nằm trong [`SETUP.md`](SETUP.md).
+   Một lệnh chạy toàn bộ: dựng cụm Docker → tải dữ liệu Kaggle → nạp vào MinIO → làm sạch → phân tích → ghi PostgreSQL → đối soát số dòng.
+
+**Lưu ý về MinIO:** MinIO được build tại máy từ source. Không chạy `docker compose pull` thông thường. Chi tiết từng bước, kiểm tra kết quả và xử lý lỗi nằm trong [`SETUP.md`](SETUP.md).
 
 ## Các giao diện cục bộ
 
@@ -97,4 +105,4 @@ Các URL dưới đây áp dụng khi cổng tương ứng được ánh xạ tr
 
 ## Tài liệu
 
-- **[SETUP.md](SETUP.md)** — yêu cầu môi trường, cấu hình `.env`, build và chạy Docker, thiết lập Python, ingestion, kiểm tra và xử lý lỗi.
+- **[SETUP.md](SETUP.md)** — yêu cầu môi trường, cấu hình `.env`, chạy pipeline, kiểm tra kết quả, kết nối Metabase và xử lý lỗi.
