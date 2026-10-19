@@ -106,6 +106,15 @@ wait_spark_workers() {
   log "Spark workers alive: $alive"
 }
 
+# Idempotent: CREATE TABLE/INDEX IF NOT EXISTS, nên chạy lại mỗi lần đều an toàn.
+# Cần thiết khi volume postgres đã tồn tại từ trước (init.sql không tự chạy lại).
+apply_serving_ddl() {
+  log "Applying postgres/init.sql (Serving Layer DDL)"
+  docker compose exec -T postgres \
+    sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+    < postgres/init.sql 2>&1 | tee -a "$LOG_FILE"
+}
+
 # ---------------------------------------------------------------- steps
 
 step_infra() {
@@ -118,6 +127,7 @@ step_infra() {
   fi
   wait_healthy minio
   wait_healthy postgres
+  apply_serving_ddl
   wait_spark_workers 2
 }
 
@@ -145,8 +155,8 @@ step_join_analytics() {
   # Job 2a (TV3): join reviews with books and write serving tables.
   local job="${JOIN_JOB:-join_analytics_job.py}"
   if [[ ! -f "spark/jobs/$job" ]]; then
-    log "WARNING: spark/jobs/$job not found yet, skipping"
-    return 0
+    log "ERROR: spark/jobs/$job not found (Job 2a is required)"
+    return 1
   fi
   spark_submit "$job"
 }

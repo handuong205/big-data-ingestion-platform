@@ -12,6 +12,7 @@ x-spark-common: &spark-common
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     SPARK_EXECUTOR_MEMORY: ${SPARK_EXECUTOR_MEMORY:-1536m}
     SPARK_DRIVER_MEMORY: ${SPARK_DRIVER_MEMORY:-1g}
+    MIN_REVIEWS_Q2: ${MIN_REVIEWS_Q2:-30}
     # Container-side values; .env holds the host-side ones.
     SPARK_MASTER_URL: spark://spark-master:7077
     MINIO_ENDPOINT: http://minio:9000
