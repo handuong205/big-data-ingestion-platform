@@ -53,19 +53,40 @@ Index được tạo trong `postgres/init.sql` cho các cột lọc/sắp xếp 
 
 ## 3. Số liệu đo được
 
-> Điền sau khi chạy `./run_pipeline.sh` trên dữ liệu đầy đủ.
+Đã chạy `./run_pipeline.sh` trên dữ liệu đầy đủ ngày 19/10/2026. Kết quả:
 
 | Chỉ số | Giá trị |
 |---|---|
-| Tổng review sạch | … |
-| Review khớp sách | … |
-| Tỷ lệ khớp review | … % |
-| Sách distinct | … |
-| Sách có review khớp | … |
-| Tỷ lệ khớp sách | … % |
-| Thời gian Job 2a | … giây |
-| Thời gian Q1 query (có index) | … ms |
-| Thời gian Q1 query (không index, `SET enable_indexscan=off`) | … ms |
+| Tổng review sạch | 2.430.902 |
+| Review khớp sách | 2.430.902 |
+| Tỷ lệ khớp review (title_norm) | **100,00 %** |
+| Sách distinct | 207.065 |
+| Sách có review khớp | 207.065 |
+| Tỷ lệ khớp sách | **100,00 %** |
+| Khớp theo Title nguyên bản (distinct) | 206.442 / 210.066 = **98,27 %** |
+| Thời gian Job 2a | 123,8 giây |
+| Thời gian Q1 query (có index) | 0,041 ms |
+| Thời gian Q1 query (không index) | 13,938 ms |
+| Thời gian Q2 query (có index) | 0,045 ms |
+
+Số dòng các bảng sau khi chạy:
+
+| Bảng | Số dòng |
+|---|---|
+| `agg_category_year` | 52.508 |
+| `agg_author` | 12.215 |
+| `agg_publisher` | 3.325 |
+| `agg_reviewer_segment` | 4 |
+| `book_summary` | 20.476 |
+| `top_helpful_reviews` | 200 |
+
+Đối soát Job 1: `SUCCESS`, cả hai bảng đều `PASS`.
+
+- Books: 212.404 = 207.065 clean + 1 bad + 5.338 dedup.
+- Reviews: 3.000.000 = 2.430.902 clean + 208 bad + 568.890 dedup.
+
+Thời gian toàn pipeline: 1.475 giây (~24,6 phút), trong đó `clean` 777 giây,
+`ingest` 206 giây, `review_analytics` 146 giây, `join_analytics` 128 giây.
 
 ### 3.1. Kiểm thử trên sample 10k dòng
 
@@ -106,20 +127,32 @@ Nguồn: `data/reports/join_match.json`, log `logs/pipeline_*.log`, output
 - ClickHouse nhanh hơn cho quét cột trên tỷ dòng, nhưng thêm một dịch vụ, thêm
   chi phí vận hành và không cần thiết ở quy mô kết quả hiện tại.
 
-## 5. Vấn đề độ tin cậy: tỷ lệ khớp join thấp
+## 5. Vấn đề độ tin cậy: join theo tên sách
 
-- Khoá join là **tên sách đã chuẩn hoá**, không phải ID. Hai bảng đến từ hai
-  nguồn khác nhau (Amazon reviews và Google Books metadata), nên một phần review
-  không tìm được sách tương ứng.
+- Rủi ro lường trước là **tỷ lệ khớp join thấp**, vì khoá join là tên sách đã
+  chuẩn hoá chứ không phải ID. Hai file đến từ hai nguồn khác nhau (Amazon
+  reviews và Google Books metadata).
+- Thực đo trên dataset này:
+  - Khớp theo `Title` nguyên bản (distinct): **98,27%**.
+  - Sau khi chuẩn hoá `title_norm`: **100%** review và **100%** sách đều khớp.
+- Lý do 100%: `books_data.csv` của bộ Kaggle này là metadata được thu thập cho
+  đúng tập sách có review, không phải một catalogue độc lập rộng hơn. Vì vậy
+  **không được khái quát** tỷ lệ 100% cho bộ dữ liệu khác. Báo cáo ghi rõ đây là
+  đặc điểm của dataset, không phải join hoàn hảo nói chung.
+- Rủi ro thật còn lại:
+  - Chuẩn hoá + khử trùng theo `title_norm` đã gộp **5.338 dòng sách** (các ấn
+    bản/tiêu đề gần giống nhau). Các ấn bản khác nhau có thể bị tính chung một
+    sách.
+  - Review trùng theo `(user_id, title_norm, timestamp)` bị loại: **568.890 dòng**.
+  - Không có ISBN/ASIN chung giữa hai bảng, nên không thể xác minh từng cặp
+    sách–review là cùng một ấn bản.
 - Cách xử lý:
-  - Chỉ tính Q1/Q2/Q6 trên phần **join được**, và ghi rõ tỷ lệ khớp trong báo
-    cáo cùng `dq_report`.
-  - Chuẩn hoá `title_norm` (chữ thường, bỏ ký tự đặc biệt, gộp khoảng trắng)
-    trước khi join để tăng tỷ lệ khớp.
-  - Không suy diễn cho phần không khớp; dashboard phải hiển thị tỷ lệ khớp như
-    một hạn chế của kết luận.
-- Rủi ro fan-out nếu `books_clean` còn trùng `title_norm`: Job 2a khử trùng lần
-  nữa trước khi join và cảnh báo nếu `matched_reviews > reviews_total`.
+  - Ghi cả hai tỷ lệ (exact 98,27%, normalized 100%) và số dòng bị dedup vào báo
+    cáo, `dq_report` và dashboard.
+  - Không suy diễn cho phần không khớp; nếu chạy bộ dữ liệu khác, tỷ lệ này phải
+    được đo lại.
+  - Job 2a khử trùng `books_clean` lần nữa trước khi join và cảnh báo nếu
+    `matched_reviews > reviews_total` để tránh fan-out.
 
 ## 6. Câu hỏi bảo vệ
 
