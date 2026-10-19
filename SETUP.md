@@ -1,309 +1,188 @@
 # SETUP — BDT301 Big Data Assignment
 
-Tài liệu hướng dẫn cài đặt, khởi chạy và kiểm tra môi trường Big Data. Xem [`README.md`](README.md) để biết tổng quan dự án.
+Hướng dẫn cài đặt và chạy toàn bộ pipeline từ một máy sạch. Xem [`README.md`](README.md) để biết tổng quan dự án.
 
 ## 1. Yêu cầu môi trường
 
-Cài đặt:
-- Windows 10/11 hoặc hệ điều hành hỗ trợ Docker.
-- Docker Desktop hoặc Docker Engine kèm Docker Compose v2.
-- Git.
-- Python hoặc Anaconda để chạy ingestion.
-- Visual Studio Code (khuyến nghị).
-- Kết nối Internet tới GitHub và Docker Hub.
-
-Nên dành tối thiểu khoảng 4 GB RAM cho lần build MinIO đầu tiên; toàn bộ stack có thể cần nhiều RAM hơn. Cần đủ dung lượng ổ đĩa cho image, dữ liệu CSV, volume và dữ liệu xử lý trung gian.
-
-Kiểm tra bằng PowerShell:
-
-```powershell
-docker --version
-docker compose version
-docker info
-git --version
-python --version
-```
-
-Nếu `docker info` báo lỗi kết nối, hãy mở Docker Desktop và chờ Docker Engine khởi động.
-
-## 2. Lấy source code
-
-### Chưa có project
-
-```powershell
-git clone <repository-url>
-cd <ten-thu-muc-repository>
-```
-
-Thay `<repository-url>` bằng URL GitHub của nhóm.
-
-### Đã có project
-
-```powershell
-cd D:\Assignment
-git status
-git pull
-```
-
-Thay `D:\Assignment` bằng đường dẫn project thực tế. Nếu đang làm trên branch riêng, hãy kiểm tra branch và lưu các thay đổi chưa commit trước khi pull.
-
-## 3. Build MinIO tại máy
-
-Repository sử dụng phiên bản MinIO source `RELEASE.2025-09-06T17-38-46Z`. Cần có Dockerfile tại `minio/Dockerfile`.
-
-Service MinIO trong `docker-compose.yml` phải có cấu hình build local, tương tự:
-
-```yaml
-minio:
-  image: quay.io/minio/minio:RELEASE.2025-09-06T17-38-46Z
-  build: ./minio
-  pull_policy: build
-```
-
-Đây là phần cấu hình minh họa. Giữ nguyên `command`, `ports`, `environment`, `volumes`, `networks` và `healthcheck` của service đang dùng. Dockerfile phải thực sự build được đúng phiên bản đã chọn.
-
-**Không chạy `docker compose pull` thông thường** nếu lệnh đó cố tải image MinIO từ registry.
-
-## 4. Tạo file `.env`
-
-Tạo file `.env` ở thư mục gốc, cùng cấp với `docker-compose.yml`:
-
-Repository có `.env.example`, có thể sao chép thành `.env` rồi điền giá trị thực tế.
-
-## 5. Chuẩn bị thư mục
-
-Chạy tại thư mục gốc trong PowerShell:
-
-```powershell
-New-Item -ItemType Directory -Force -Path `
-  "data/raw", `
-  "ingestion/logs", `
-  "spark/jobs", `
-  "spark/event-logs", `
-  "postgres", `
-  "reports"
-```
-
-Không ghi đè Dockerfile, script hoặc file cấu hình đã có trong repository nếu chưa kiểm tra nội dung.
-
-## 6. Build và khởi chạy Docker Compose
-
-Kiểm tra cấu hình:
-
-```powershell
-docker compose config
-```
-
-Build MinIO và khởi chạy các service:
-
-```powershell
-docker compose up -d --build
-```
-
-Lần build MinIO đầu tiên có thể mất 5–10 phút hoặc lâu hơn tùy mạng, CPU và ổ đĩa.
-
-Kiểm tra trạng thái:
-
-```powershell
-docker compose ps
-```
-
-Xem log tổng thể:
-
-```powershell
-docker compose logs --tail 100
-```
-
-Xem log từng service nếu cần:
-
-```powershell
-docker compose logs --tail 100 minio
-docker compose logs --tail 100 spark-master
-docker compose logs --tail 100 spark-worker-1
-docker compose logs --tail 100 spark-worker-2
-docker compose logs --tail 100 postgres
-docker compose logs --tail 100 metabase
-```
-
-Tên service phải khớp với `docker-compose.yml` của repository.
-
-### Cập nhật các image khác
-
-Để cập nhật các image có thể pull mà bỏ qua service build tại máy:
-
-```powershell
-docker compose pull --ignore-buildable
-docker compose up -d --build
-```
-
-Tùy chọn `--ignore-buildable` yêu cầu phiên bản Docker Compose hỗ trợ. Nếu không được hỗ trợ, hãy kiểm tra `docker compose pull --help`.
-
-## 7. Truy cập giao diện
-
-Các URL áp dụng khi `docker-compose.yml` ánh xạ đúng các cổng sau:
-
-| Dịch vụ | URL |
+| Thành phần | Ghi chú |
 |---|---|
-| MinIO Console | http://localhost:9001 |
-| MinIO API | http://localhost:9000 |
-| Spark Master UI | http://localhost:8080 |
-| Spark Worker 1 UI | http://localhost:8081 |
-| Spark Worker 2 UI | http://localhost:8082 |
-| Metabase | http://localhost:3000 |
-
-Đăng nhập MinIO bằng `MINIO_ROOT_USER` và `MINIO_ROOT_PASSWORD` trong `.env`. Trên Spark Master UI, xác nhận các Worker đã đăng ký thành công.
-
-## 8. Cấu hình Python cho Ingestion
-
-### Tạo hoặc kích hoạt môi trường
-
-Nếu dùng Anaconda và chưa có môi trường riêng:
-
-```powershell
-conda create -n bdt301-ingestion python=3.12 -y
-conda activate bdt301-ingestion
-```
-
-Nếu đã có môi trường Python phù hợp, có thể sử dụng môi trường đó.
-
-### Cài thư viện
-
-Đảm bảo `ingestion/requirements.txt` có:
-
-```text
-boto3
-python-dotenv
-```
-
-Cài đặt và kiểm tra:
-
-```powershell
-python -m pip install -r ingestion/requirements.txt
-python --version
-python -c "import boto3, dotenv; print('Dependencies OK')"
-```
-
-Nếu hiện `Dependencies OK`, các thư viện đã sẵn sàng.
-
-## 9. Chuẩn bị và nạp dữ liệu CSV
-
-Đặt 5 file CSV của nhóm vào:
-
-```text
-data/raw/
-```
+| Docker Desktop (Compose v2) | Cấp tối thiểu **8 GB RAM** cho Docker (máy 16 GB dùng mặc định là đủ) |
+| Git kèm **Git Bash** | `run_pipeline.sh` phải chạy bằng Git Bash, không chạy bằng PowerShell |
+| Python 3.10+ | Chạy script tải dữ liệu và ingestion trên máy host |
+| Ổ đĩa trống ~10 GB | Dataset ~3 GB, bản sao trên MinIO, Parquet, Docker image |
+| Internet | GitHub, Docker Hub, Maven Central, Kaggle |
 
 Kiểm tra:
 
 ```powershell
-Get-ChildItem .\data\raw\*.csv
+docker info
+docker compose version
+git --version
+python --version
 ```
 
-Tổng dung lượng dự kiến khoảng 2.43 GB; hãy xác nhận dung lượng thực tế trước khi chạy.
+Nếu `docker info` báo lỗi kết nối, mở Docker Desktop và chờ Engine khởi động.
 
-Đảm bảo MinIO đang hoạt động:
+## 2. Lấy source code
 
 ```powershell
-docker compose ps minio
+git clone <repository-url>
+cd <ten-thu-muc-repository>
+git checkout dev
 ```
 
-Chạy ingestion:
+## 3. Tạo file `.env`
 
 ```powershell
-python .\ingestion\ingest.py
+copy .env.example .env
 ```
 
-Theo thiết kế dự kiến, script sẽ:
-1. Tìm các file CSV trong `data/raw/`.
-2. Tạo bucket `raw-data` nếu chưa có.
-3. Tính SHA-256 cho từng file nguồn.
-4. Upload file vào MinIO.
-5. Ghi dung lượng, thời gian thực thi và trạng thái.
-6. Kiểm tra kích thước và metadata sau upload.
+Mở `.env` và sửa:
 
-Object dự kiến có đường dẫn `raw-data/raw/<ten-file>.csv`, tùy cấu hình thực tế trong script.
+| Biến | Giá trị |
+|---|---|
+| `MINIO_ROOT_PASSWORD`, `POSTGRES_PASSWORD` | Mật khẩu mạnh (MinIO yêu cầu ≥ 8 ký tự) |
+| `KAGGLE_API_TOKEN` | Lấy tại kaggle.com → Settings → API → *Create New Token* |
 
-### Kiểm tra kết quả
+Các biến còn lại giữ nguyên. Các biến `SPARK_MASTER_URL`, `MINIO_ENDPOINT`, `POSTGRES_HOST`, `RAW_*_PATH`... trong `.env` là giá trị cho script chạy **trên máy host**; bên trong container Spark, `docker-compose.yml` ghi đè bằng giá trị nội bộ (`spark://spark-master:7077`, `http://minio:9000`, `postgres`, `s3a://raw-data/raw/...`).
 
-Mở MinIO Console tại http://localhost:9001 và xác nhận bucket `raw-data` cùng các file dưới prefix `raw/` đã xuất hiện.
+Không commit `.env` (đã có trong `.gitignore`).
 
-Log dự kiến nằm ở:
-
-```text
-ingestion/logs/ingestion.jsonl
-```
-
-Xem log bằng PowerShell:
+## 4. Cài thư viện Python
 
 ```powershell
-Get-Content .\ingestion\logs\ingestion.jsonl
+python -m pip install -r ingestion/requirements.txt
+python -c "import boto3, dotenv, kagglehub; print('Dependencies OK')"
 ```
 
-Nếu script hỗ trợ bỏ qua file không thay đổi, hãy chạy lại để kiểm tra hành vi đó.
+## 5. Chạy pipeline
 
-**Lưu ý về checksum:** Nếu script chỉ kiểm tra SHA-256 trong metadata và dung lượng object, điều này chưa xác minh toàn bộ nội dung object sau upload. Muốn kiểm tra tính toàn vẹn đầy đủ, cần đọc lại object từ MinIO và tính SHA-256 để so sánh với file nguồn.
+Mở **Git Bash** tại thư mục gốc project:
 
-## 10. Quy trình làm việc hằng ngày
+```bash
+./run_pipeline.sh
+```
 
-Khi bắt đầu:
+Script chạy lần lượt 7 bước, dừng ngay khi một bước lỗi và ghi log vào `logs/pipeline_<thời gian>.log`:
+
+| Bước | Việc thực hiện | Thời gian (lần đầu) |
+|---|---|---|
+| `infra` | Build image MinIO (từ source) và Spark (kèm jar S3A + JDBC) nếu chưa có, khởi động cụm, chờ MinIO/Postgres healthy và đủ 2 Spark worker | 5–15 phút |
+| `download` | Tải dataset từ Kaggle về `data/raw/` (bỏ qua nếu đã có) | Tùy mạng |
+| `ingest` | Nạp 2 file CSV lên MinIO, kiểm tra SHA-256 và số dòng | ~2–3 phút |
+| `clean` | Spark Job 1: làm sạch, ghi Parquet vào `data/processed/`, bản ghi lỗi vào `data/bad_records/` | ~6 phút |
+| `review_analytics` | Spark Job 2b: phân tích review, ghi vào PostgreSQL | ~2 phút |
+| `join_analytics` | Spark Job 2a: join sách với review, ghi Q1/Q2/Q6 vào PostgreSQL | ~3 phút |
+| `reconcile` | Đối soát số dòng `raw = clean + bad + dedup` | ~1 phút |
+
+Các tùy chọn:
+
+```bash
+./run_pipeline.sh --list            # liệt kê tên các bước
+./run_pipeline.sh --from clean      # chạy tiếp từ một bước (sau khi sửa lỗi)
+./run_pipeline.sh --only ingest     # chạy riêng một bước
+```
+
+Nhấn Ctrl+C sẽ dừng cả Spark driver trong container, không để lại job treo trên cụm.
+
+### Chạy từng phần thủ công (khi cần debug)
 
 ```powershell
-cd D:\Assignment
-git pull
-docker compose up -d
-docker compose ps
+docker compose up -d --build                         # chỉ dựng cụm
+python .\ingestion\download_kaggle_dataset.py        # chỉ tải dữ liệu (--force để tải lại)
+python .\ingestion\ingest.py                         # chỉ nạp lên MinIO
 ```
 
-Khi cần chạy ingestion:
+## 6. Kiểm tra kết quả
+
+| Dịch vụ | URL | Cần thấy |
+|---|---|---|
+| Spark Master UI | http://localhost:8080 | 2 worker *ALIVE*, các application ở mục *Completed* |
+| Spark Job UI | http://localhost:4040 | Chỉ có khi một job đang chạy (DAG, Stage, Task) |
+| MinIO Console | http://localhost:9001 | Bucket `raw-data` có `raw/books/books_data.csv`, `raw/reviews/Books_rating.csv` |
+| Metabase | http://localhost:3000 | Dashboard (xem mục 7) |
+
+Đăng nhập MinIO bằng `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` trong `.env`.
+
+Log và minh chứng:
+
+| File | Nội dung |
+|---|---|
+| `logs/pipeline_*.log` | Log toàn bộ mỗi lần chạy pipeline, thời gian từng bước |
+| `ingestion/logs/ingestion.jsonl` | Mỗi lần nạp: dung lượng, số dòng, SHA-256, thời gian, trạng thái `UPLOADED` / `SKIPPED` / `FAILED` |
+| `ingestion/logs/reconciliation.json` | Kết quả đối soát số dòng giữa các tầng |
+| `spark/event-logs/` | Spark event log (bằng chứng thực thi) |
+
+Kiểm tra bảng trong PostgreSQL:
 
 ```powershell
-conda activate bdt301-ingestion
-python .\ingestion\ingest.py
+docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt"'
 ```
 
-Dừng container nhưng giữ dữ liệu:
+## 7. Kết nối Metabase lần đầu
+
+1. Mở http://localhost:3000 và tạo tài khoản admin.
+2. Thêm database PostgreSQL:
+   - Host: `postgres` (tên service trong Docker network, **không** dùng `localhost`)
+   - Port: `5432`
+   - Database / Username / Password: `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` trong `.env`
+
+Cấu hình Metabase được lưu trong volume `metabase_data`, không mất khi tạo lại container.
+
+## 8. Những lần chạy sau
+
+Mở Docker Desktop rồi chạy lại `./run_pipeline.sh`. Image đã có nên không build lại, CSV đã có nên bỏ qua bước tải, dữ liệu trên MinIO không đổi nên `ingest` báo `SKIPPED`.
+
+Dừng và khởi động lại cụm mà vẫn giữ dữ liệu:
 
 ```powershell
 docker compose stop
-```
-
-Khởi động lại container đã dừng:
-
-```powershell
 docker compose start
 ```
 
-## 11. Xử lý lỗi thường gặp
+## 9. Thiết kế ingestion
+
+`ingestion/ingest.py`:
+
+- Nạp `data/raw/books_data.csv` → `raw-data/raw/books/books_data.csv` và `data/raw/Books_rating.csv` → `raw-data/raw/reviews/Books_rating.csv`; tự tạo bucket nếu chưa có.
+- **Chạy lại không tạo bản trùng:** luôn ghi đè cùng object key; nếu object đã có cùng SHA-256 và dung lượng thì bỏ qua (`SKIPPED`).
+- **Upload multipart** (phần 64 MB): nếu bị ngắt giữa chừng, object chưa hoàn tất không xuất hiện trong bucket; chạy lại sẽ nạp lại từ đầu.
+- **Kiểm tra toàn vẹn:** so dung lượng sau upload, đọc lại object từ MinIO để tính lại SHA-256; số dòng đếm bằng module `csv` (đúng cả khi ô review chứa ký tự xuống dòng). Checksum và số dòng được lưu vào metadata của object.
+- Trả exit code 1 nếu có file lỗi.
+
+Tùy chọn: `--force` (nạp lại dù không đổi), `--skip-verify` (bỏ bước đọc lại để kiểm tra).
+
+## 10. Xử lý lỗi thường gặp
 
 ### `401 UNAUTHORIZED` từ `quay.io`
 
-Kiểm tra service MinIO có cấu hình `build` và Dockerfile có tồn tại đúng đường dẫn. Thử:
-
-```powershell
-docker compose up -d --build
-```
-
-Tránh `docker compose pull` thông thường nếu nó cố tải image MinIO từ registry.
+Image MinIO được build tại máy, không pull từ registry. Không chạy `docker compose pull`; dùng `docker compose up -d --build`. Nếu cần cập nhật các image khác: `docker compose pull --ignore-buildable`.
 
 ### Build MinIO bị kill hoặc hết bộ nhớ
 
-- Kiểm tra mức sử dụng RAM và ổ đĩa.
-- Đóng ứng dụng không cần thiết.
-- Điều chỉnh tài nguyên Docker Desktop.
-- Thử build lại sau khi giải phóng tài nguyên.
+Đóng ứng dụng không cần thiết, tăng RAM cho Docker Desktop rồi build lại: `docker compose build minio`.
 
-Mức 4 GB chỉ là tham khảo tối thiểu, không đảm bảo mọi cấu hình build đều chạy được.
+### Lỡ xóa image
 
-### Build lỗi khi tải source
+Dữ liệu nằm trong volume nên không mất. Build lại: `docker compose build`, sau đó `docker compose up -d`.
 
-Kiểm tra kết nối Internet, GitHub, proxy hoặc firewall; xem log để xác định bước thất bại.
+### `$'\r': command not found` khi chạy `run_pipeline.sh`
 
-### `ModuleNotFoundError: No module named 'boto3'`
+File bị chuyển sang CRLF. Repository có `.gitattributes` giữ `*.sh` ở LF; nếu vẫn lỗi:
 
-Cài thư viện vào đúng môi trường Python đang chạy:
+```bash
+git rm --cached run_pipeline.sh && git checkout -- run_pipeline.sh
+```
+
+### Spark job treo với "Initial job has not accepted any resources"
+
+Job xin nhiều bộ nhớ hơn worker có. Kiểm tra `SPARK_EXECUTOR_MEMORY` (mặc định `1536m`) nhỏ hơn `SPARK_WORKER_MEMORY` (mặc định `2G`) và job không đặt cứng `spark.executor.memory` trong code.
+
+### Worker không xuất hiện trên Spark Master UI
 
 ```powershell
-python -m pip install boto3 python-dotenv
+docker compose logs --tail 100 spark-master
+docker compose logs --tail 100 spark-worker-1
 ```
 
 ### Không kết nối được MinIO
@@ -313,61 +192,39 @@ docker compose ps minio
 docker compose logs --tail 100 minio
 ```
 
-Khi chạy script Python trực tiếp trên Windows, endpoint thường là `http://localhost:9000`. Từ container cùng Docker network, endpoint thường là `http://minio:9000`.
+Script chạy trên máy host dùng `http://localhost:9000`; Spark trong container dùng `http://minio:9000`.
 
-### Không tìm thấy file CSV
+### `ModuleNotFoundError: No module named 'boto3'`
 
-```powershell
-Get-ChildItem .\data\raw\*.csv
-```
-
-Đảm bảo file nằm đúng thư mục và có đuôi `.csv`.
-
-### Worker không xuất hiện trên Spark Master UI
-
-```powershell
-docker compose logs --tail 100 spark-master
-docker compose logs --tail 100 spark-worker-1
-docker compose logs --tail 100 spark-worker-2
-```
-
-Kiểm tra hostname, địa chỉ Master, tài nguyên Worker và ánh xạ cổng trong Compose.
+Cài thư viện vào đúng môi trường Python đang dùng: `python -m pip install -r ingestion/requirements.txt`.
 
 ### Lỗi cổng đã được sử dụng
 
-Kiểm tra cổng host trong `docker-compose.yml`. Nếu cần, chọn cổng host khác và cập nhật URL truy cập tương ứng.
+Đổi cổng host trong `docker-compose.yml` và cập nhật URL tương ứng.
 
-### Spark không đọc được dữ liệu từ MinIO
+### Sửa `postgres/init.sql` nhưng bảng không thay đổi
 
-Các service cùng Docker network chưa có nghĩa Spark đã được cấu hình đọc `s3a://`. Cần cấu hình Hadoop S3A connector và thông tin endpoint/credentials tương ứng.
+PostgreSQL chỉ chạy `init.sql` khi volume còn trống. Chạy SQL thủ công qua `psql`, hoặc xóa volume (mất dữ liệu Postgres): `docker compose down` rồi `docker volume rm <project>_postgres_data`.
 
-## 12. Dừng hoặc xóa môi trường
-
-Dừng container và giữ volume:
+## 11. Dừng hoặc xóa môi trường
 
 ```powershell
-docker compose down
+docker compose down      # dừng và xóa container, giữ dữ liệu
+docker compose down -v   # XÓA cả dữ liệu MinIO, PostgreSQL, Metabase
 ```
 
-Dừng container và xóa volume:
+**Cảnh báo:** chỉ dùng `down -v` khi chắc chắn muốn xóa dữ liệu.
 
-```powershell
-docker compose down -v
-```
-
-**Cảnh báo:** `docker compose down -v` có thể xóa dữ liệu MinIO và PostgreSQL trong named volumes. Chỉ chạy khi chắc chắn muốn xóa dữ liệu hoặc đã sao lưu.
-
-## 13. Checklist Infrastructure & Ingestion
-
+## 12. Checklist Infrastructure & Ingestion
 
 - [x] Build MinIO từ source thành công.
-- [x] Khởi chạy các service bằng Docker Compose.
-- [x] Kiểm tra Spark Master và các Worker.
-- [x] Xác nhận MinIO và PostgreSQL hoạt động.
-- [x] Nạp đủ 5 file CSV vào MinIO.
-- [ ] Ghi nhận dung lượng, thời gian và checksum.
-- [ ] Xác minh tính toàn vẹn dữ liệu.
-- [ ] Lưu log và ảnh chụp màn hình làm minh chứng.
-- [ ] Thống nhất bucket, prefix, endpoint và cách Spark đọc dữ liệu qua S3A với thành viên ETL.
-
-Các kết quả như build thành công, số lượng Worker, thời gian ingestion và checksum cần được xác nhận bằng lần chạy thực tế.
+- [x] Khởi chạy các service bằng Docker Compose (ghim phiên bản, giới hạn bộ nhớ).
+- [x] Spark Master và 2 Worker hoạt động.
+- [x] MinIO và PostgreSQL healthy.
+- [x] Nạp đủ 2 file CSV (`books_data.csv`, `Books_rating.csv`) vào MinIO.
+- [x] Ghi nhận dung lượng, thời gian, số dòng và checksum (`ingestion.jsonl`).
+- [x] Xác minh toàn vẹn dữ liệu (SHA-256 đọc lại từ MinIO, số dòng).
+- [x] Chạy lại ingestion không tạo bản trùng (`SKIPPED`).
+- [x] Spark đọc dữ liệu thô từ MinIO qua S3A.
+- [x] `run_pipeline.sh` chạy trọn pipeline bằng một lệnh, dừng khi lỗi, có bước đối soát.
+- [ ] Lưu ảnh chụp màn hình (MinIO Console, Spark UI, log) làm minh chứng.

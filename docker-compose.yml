@@ -1,3 +1,35 @@
+x-spark-common: &spark-common
+  image: bdt301/spark:3.5.6
+  build: ./spark
+  pull_policy: build
+  restart: unless-stopped
+  environment:
+    MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+    MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    MINIO_BUCKET: ${MINIO_BUCKET:-raw-data}
+    POSTGRES_DB: ${POSTGRES_DB}
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    SPARK_EXECUTOR_MEMORY: ${SPARK_EXECUTOR_MEMORY:-1536m}
+    SPARK_DRIVER_MEMORY: ${SPARK_DRIVER_MEMORY:-1g}
+    MIN_REVIEWS_Q2: ${MIN_REVIEWS_Q2:-30}
+    # Container-side values; .env holds the host-side ones.
+    SPARK_MASTER_URL: spark://spark-master:7077
+    MINIO_ENDPOINT: http://minio:9000
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+    RAW_BOOKS_PATH: s3a://${MINIO_BUCKET:-raw-data}/raw/books/
+    RAW_REVIEWS_PATH: s3a://${MINIO_BUCKET:-raw-data}/raw/reviews/
+    PROCESSED_DIR: /opt/data/processed
+    BAD_RECORDS_DIR: /opt/data/bad_records
+  volumes:
+    - ./spark/jobs:/opt/spark/jobs
+    - ./spark/event-logs:/opt/spark/event-logs
+    # Same mount on every node so driver and executors see the same files.
+    - ./data:/opt/data
+    - ./ingestion/logs:/opt/ingestion/logs
+  networks:
+    - bigdata
 
 services:
   minio:
@@ -16,73 +48,67 @@ services:
       - minio_data:/data
     networks:
       - bigdata
+    mem_limit: 1g
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # The locally built image has curl but not mc.
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   spark-master:
-    image: apache/spark:3.5.6
+    <<: *spark-common
     command: >
       /opt/spark/bin/spark-class
       org.apache.spark.deploy.master.Master
       --host spark-master
       --port 7077
       --webui-port 8080
-    restart: unless-stopped
     ports:
       - "8080:8080"
       - "7077:7077"
-    volumes:
-      - ./spark/jobs:/opt/spark/jobs
-      - ./spark/event-logs:/opt/spark/event-logs
-    networks:
-      - bigdata
+      - "4040:4040"
+    # Master daemon + spark-submit driver (client mode) run here.
+    mem_limit: 2560m
+    depends_on:
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
 
   spark-worker-1:
-    image: apache/spark:3.5.6
+    <<: *spark-common
     command: >
       /opt/spark/bin/spark-class
       org.apache.spark.deploy.worker.Worker
       spark://spark-master:7077
-      --cores ${SPARK_WORKER_CORES}
-      --memory ${SPARK_WORKER_MEMORY}
+      --cores ${SPARK_WORKER_CORES:-2}
+      --memory ${SPARK_WORKER_MEMORY:-2G}
       --webui-port 8081
-    restart: unless-stopped
-    depends_on:
-      - spark-master
     ports:
       - "8081:8081"
-    volumes:
-      - ./spark/jobs:/opt/spark/jobs
-      - ./spark/event-logs:/opt/spark/event-logs
-    networks:
-      - bigdata
+    # SPARK_WORKER_MEMORY for executors + worker daemon overhead.
+    mem_limit: 2560m
+    depends_on:
+      - spark-master
 
-  
   spark-worker-2:
-    image: apache/spark:3.5.6
+    <<: *spark-common
     command: >
       /opt/spark/bin/spark-class
       org.apache.spark.deploy.worker.Worker
       spark://spark-master:7077
-      --cores ${SPARK_WORKER_CORES}
-      --memory ${SPARK_WORKER_MEMORY}
+      --cores ${SPARK_WORKER_CORES:-2}
+      --memory ${SPARK_WORKER_MEMORY:-2G}
       --webui-port 8082
-    restart: unless-stopped
-    depends_on:
-      - spark-master
     ports:
       - "8082:8082"
-    volumes:
-      - ./spark/jobs:/opt/spark/jobs
-      - ./spark/event-logs:/opt/spark/event-logs
-    networks:
-      - bigdata
+    mem_limit: 2560m
+    depends_on:
+      - spark-master
 
   postgres:
-    image: postgres:16
+    image: postgres:16.15
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -95,6 +121,7 @@ services:
       - ./postgres:/docker-entrypoint-initdb.d:ro
     networks:
       - bigdata
+    mem_limit: 1g
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -102,19 +129,26 @@ services:
       retries: 5
 
   metabase:
-    image: metabase/metabase:latest
+    image: metabase/metabase:v0.63.20.2
     restart: unless-stopped
+    environment:
+      MB_DB_FILE: /metabase-data/metabase.db
+      JAVA_OPTS: -Xmx1g
     ports:
       - "3000:3000"
+    volumes:
+      - metabase_data:/metabase-data
+    networks:
+      - bigdata
+    mem_limit: 1536m
     depends_on:
       postgres:
         condition: service_healthy
-    networks:
-      - bigdata
 
 volumes:
   minio_data:
   postgres_data:
+  metabase_data:
 
 networks:
   bigdata:
