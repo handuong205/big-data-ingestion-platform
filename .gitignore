@@ -10,6 +10,8 @@ data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 data/bad_records/*
+data/reports/*
+data/kagglehub/*
 
 
 # Logs and outputs

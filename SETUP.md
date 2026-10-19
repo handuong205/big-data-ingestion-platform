@@ -72,7 +72,7 @@ Script chạy lần lượt 7 bước, dừng ngay khi một bước lỗi và g
 | `ingest` | Nạp 2 file CSV lên MinIO, kiểm tra SHA-256 và số dòng | ~2–3 phút |
 | `clean` | Spark Job 1: làm sạch, ghi Parquet vào `data/processed/`, bản ghi lỗi vào `data/bad_records/` | ~6 phút |
 | `review_analytics` | Spark Job 2b: phân tích review, ghi vào PostgreSQL | ~2 phút |
-| `join_analytics` | Spark Job 2a (join sách và review); bỏ qua nếu chưa có file job | — |
+| `join_analytics` | Spark Job 2a: join sách với review, ghi Q1/Q2/Q6 vào PostgreSQL | ~3 phút |
 | `reconcile` | Đối soát số dòng `raw = clean + bad + dedup` | ~1 phút |
 
 Các tùy chọn:

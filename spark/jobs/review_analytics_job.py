@@ -25,6 +25,11 @@ from pyspark.sql.functions import (
     when, desc, asc, min as spark_min, max as spark_max
 )
 
+# Dùng chung JDBC writer với Job 2a: truncate=true để giữ DDL/index của
+# postgres/init.sql thay vì DROP TABLE như mode=overwrite mặc định.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from serving import write_to_postgres  # noqa: E402
+
 def create_spark_session(app_name="BDT301_TV2_Job2b_Review_Analytics"):
     """
     Khởi tạo SparkSession tối ưu cho việc tính toán phân tích và kết nối JDBC.
@@ -64,48 +69,6 @@ def create_spark_session(app_name="BDT301_TV2_Job2b_Review_Analytics"):
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
     )
     return builder.getOrCreate()
-
-
-def write_to_postgres(df, table_name, base_dir=None):
-    """
-    Ghi DataFrame vào cơ sở dữ liệu PostgreSQL qua JDBC.
-    Nếu gặp lỗi, raise Exception để dừng toàn bộ pipeline ngay lập tức,
-    không lưu fallback ngầm nhằm đảm bảo tính toàn vẹn và minh bạch của hệ thống.
-    """
-    db_host = os.getenv("POSTGRES_HOST")
-    db_port = os.getenv("POSTGRES_PORT", "5432")
-    db_name = os.getenv("POSTGRES_DB")
-    db_user = os.getenv("POSTGRES_USER")
-    db_pass = os.getenv("POSTGRES_PASSWORD")
-    
-    if not (db_host and db_name and db_user and db_pass):
-        missing = [var for var, val in [
-            ("POSTGRES_HOST", db_host),
-            ("POSTGRES_DB", db_name),
-            ("POSTGRES_USER", db_user),
-            ("POSTGRES_PASSWORD", db_pass)
-        ] if not val]
-        raise ValueError(f"Thiếu các biến môi trường bắt buộc của PostgreSQL: {', '.join(missing)}")
-    
-    jdbc_url = f"jdbc:postgresql://{db_host}:{db_port}/{db_name}"
-    
-    try:
-        print(f"[*] Đang đồng bộ bảng '{table_name}' vào PostgreSQL ({db_host}:{db_port}/{db_name})...")
-        (
-            df.write
-            .format("jdbc")
-            .option("url", jdbc_url)
-            .option("dbtable", table_name)
-            .option("user", db_user)
-            .option("password", db_pass)
-            .option("driver", "org.postgresql.Driver")
-            .mode("overwrite")
-            .save()
-        )
-        print(f"  [✓] Ghi thành công bảng '{table_name}' vào PostgreSQL!")
-    except Exception as e:
-        print(f"  [✗] LỖI NGHIÊM TRỌNG: Không thể kết nối hoặc ghi vào PostgreSQL cho bảng '{table_name}': {e}", file=sys.stderr)
-        raise
 
 
 def solve_q3_price_and_length_correlation(df_reviews, base_dir):

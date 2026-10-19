@@ -15,6 +15,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # kagglehub resolves credentials. Variables already set in the shell win.
 load_dotenv(PROJECT_ROOT / ".env")
 
+# Keep KaggleHub's cache inside the repo (data/kagglehub) instead of the
+# default user cache (~/.cache/kagglehub). Override with KAGGLEHUB_CACHE
+# in .env or the shell if you want a different location.
+os.environ.setdefault("KAGGLEHUB_CACHE", str(PROJECT_ROOT / "data" / "kagglehub"))
+
 import kagglehub  # noqa: E402
 
 
