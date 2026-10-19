@@ -26,6 +26,11 @@
    để chạy lại không nhân đôi dòng và **không làm mất DDL/index**.
 5. Ghi tỷ lệ khớp join vào `dq_report` và `data/reports/join_match.json`.
 
+Các phép biến đổi chính: `broadcast` join theo `title_norm`, `explode` cho
+`main_category`/`main_author`, `groupBy` + `agg` (`count`, `countDistinct`,
+`avg`, `sum`), và `when/otherwise` để chia nhóm Q6. Window function
+(`row_number`) cho Q4 nằm ở Job 2b của TV2, không thuộc Job 2a.
+
 ## 2. Thiết kế Serving Layer
 
 | Bảng | Nguồn | Trả lời |
@@ -63,8 +68,10 @@ Index được tạo trong `postgres/init.sql` cho các cột lọc/sắp xếp 
 | Sách distinct | 207.065 |
 | Sách có review khớp | 207.065 |
 | Tỷ lệ khớp sách | **100,00 %** |
+| Khớp theo Title nguyên bản trên `books_clean` (đã dedup) | 2.369.446 / 2.430.902 = **97,47 %** |
 | Khớp theo Title nguyên bản (distinct) | 206.442 / 210.066 = **98,27 %** |
 | Thời gian Job 2a | 123,8 giây |
+| Application ID Job 2a | `app-20261019091458-0002` |
 | Thời gian Q1 query (có index) | 0,041 ms |
 | Thời gian Q1 query (không index) | 13,938 ms |
 | Thời gian Q2 query (có index) | 0,045 ms |
@@ -104,11 +111,95 @@ Chạy Job 2a và Job 2b trong container Spark với `data/sample` (10.000 revie
 
 Ghi chú: sample không có `User_id` (toàn null) nên `agg_reviewer_segment`
 rỗng trong lần kiểm thử; Job 2a vẫn ghi bảng thành công. Trên dữ liệu thật,
-`User_id` có đầy đủ nên Q6 sẽ có dữ liệu. Index vẫn còn nguyên sau khi chạy lại
-(10 index trong `pg_indexes`).
+83,01% review có `User_id` nên Q6 có dữ liệu (xem mục 3.2). Index vẫn còn
+nguyên sau khi chạy lại (10 index trong `pg_indexes`).
 
 Nguồn: `data/reports/join_match.json`, log `logs/pipeline_*.log`, output
-`EXPLAIN ANALYZE` trong PostgreSQL.
+`EXPLAIN ANALYZE` trong PostgreSQL, event log
+`spark/event-logs/app-20261019091458-0002`.
+
+### 3.2. Kết quả theo từng câu hỏi
+
+**Q1 — Top thể loại theo tổng số review** (tổng hợp từ `agg_category_year`):
+
+| Thể loại | Tổng review | Điểm TB có trọng số |
+|---|---:|---:|
+| Fiction | 622.022 | 4,09 |
+| Juvenile Fiction | 141.804 | 4,43 |
+| Biography & Autobiography | 91.375 | 4,24 |
+| Religion | 79.850 | 4,32 |
+| History | 78.394 | 4,23 |
+| Business & Economics | 61.094 | 4,13 |
+| Computers | 41.394 | 3,96 |
+| Cooking | 29.061 | 4,40 |
+| Self-Help | 27.290 | 4,38 |
+| Family & Relationships | 27.287 | 4,26 |
+
+Fiction chiếm nhiều review nhất nhưng điểm trung bình thấp hơn nhóm
+Juvenile Fiction/Cooking. Năm 2012 có số review cao nhất trong nhóm Fiction
+(61.984 review, điểm TB 4,22).
+
+**Q2 — Top tác giả có ≥ 30 review:**
+
+| Tác giả | Tổng review | Điểm TB |
+|---|---:|---:|
+| J. R. R. Tolkien | 14.619 | 4,62 |
+| Charles Dickens | 14.055 | 4,36 |
+| John Ronald Reuel Tolkien | 11.179 | 4,61 |
+| Jane Austen | 10.665 | 4,29 |
+| Charlotte Brontë | 9.949 | 4,44 |
+| Stephen King | 9.610 | 4,09 |
+| John Steinbeck | 8.939 | 4,35 |
+| George Orwell | 7.922 | 4,55 |
+| J. K. Rowling | 7.215 | 4,68 |
+| Kurt Vonnegut | 7.191 | 4,33 |
+
+Lưu ý: "J. R. R. Tolkien" và "John Ronald Reuel Tolkien" là hai biến thể tên của
+cùng một tác giả, cho thấy giới hạn của việc gộp theo chuỗi tên.
+
+**Q2 — Top nhà xuất bản có ≥ 30 review:**
+
+| Nhà xuất bản | Tổng review | Điểm TB |
+|---|---:|---:|
+| Penguin | 100.633 | 4,11 |
+| Simon and Schuster | 97.438 | 4,18 |
+| Harper Collins | 61.798 | 4,19 |
+| Vintage | 31.329 | 4,14 |
+| Random House | 30.780 | 4,21 |
+| Macmillan | 26.086 | 4,02 |
+| HarperCollins | 25.140 | 4,42 |
+| Houghton Mifflin Harcourt | 23.878 | 4,40 |
+| John Wiley & Sons | 21.826 | 4,13 |
+| Bantam | 20.900 | 4,12 |
+
+**Q6 — Phân nhóm người đánh giá theo `User_id`:**
+
+| Nhóm | Số user | Tổng review | Điểm TB | Helpful TB |
+|---|---:|---:|---:|---:|
+| 1 review | 746.245 | 746.245 | 4,23 | 4,37 |
+| 2–5 review | 221.360 | 585.060 | 4,18 | 4,20 |
+| 6–20 review | 35.220 | 321.956 | 4,21 | 5,13 |
+| >20 review | 6.136 | 364.736 | 4,26 | 7,25 |
+
+Q6 chỉ tính trên 2.017.997 review có `User_id` (83,01% tổng review sạch);
+18,73% review còn lại thiếu `User_id` nên không được phân nhóm.
+
+### 3.3. Kiểm tra lệch dữ liệu (skew)
+
+| Chỉ số | Giá trị |
+|---|---|
+| Số sách distinct | 207.065 |
+| Review/sách: trung vị | 3 |
+| Review/sách: lớn nhất | 4.858 (`harry potter and the sorcerers stone`) |
+| Top 1% sách chiếm | 35,47% tổng review |
+| Số user distinct | 1.008.961 |
+| Review/user: lớn nhất | 5.407 |
+| User có > 100 review | 684 |
+| Top 1% user chiếm | 17,74% tổng review |
+
+Dữ liệu lệch mạnh về một số ít sách và user. Vì vậy khi đọc Q1/Q2/Q6 phải nhớ
+điểm trung bình bị chi phối bởi các nhóm này; bảng tổng hợp giữ `total_reviews`
+để người đọc thấy trọng số.
 
 ## 4. Trade-off
 
@@ -133,8 +224,12 @@ Nguồn: `data/reports/join_match.json`, log `logs/pipeline_*.log`, output
   chuẩn hoá chứ không phải ID. Hai file đến từ hai nguồn khác nhau (Amazon
   reviews và Google Books metadata).
 - Thực đo trên dataset này:
-  - Khớp theo `Title` nguyên bản (distinct): **98,27%**.
+  - Nếu so `Title` nguyên bản trên dữ liệu **thô**: 99,99% review khớp.
+  - Sau khi Job 1 khử trùng sách theo `title_norm`, so `Title` nguyên bản chỉ còn
+    **97,47%** review khớp (2.369.446 / 2.430.902), vì một số biến thể tiêu đề
+    đã bị gộp và mất khỏi bảng sách.
   - Sau khi chuẩn hoá `title_norm`: **100%** review và **100%** sách đều khớp.
+  - Theo title distinct: exact **98,27%**, normalized **100%**.
 - Lý do 100%: `books_data.csv` của bộ Kaggle này là metadata được thu thập cho
   đúng tập sách có review, không phải một catalogue độc lập rộng hơn. Vì vậy
   **không được khái quát** tỷ lệ 100% cho bộ dữ liệu khác. Báo cáo ghi rõ đây là
@@ -146,6 +241,8 @@ Nguồn: `data/reports/join_match.json`, log `logs/pipeline_*.log`, output
   - Review trùng theo `(user_id, title_norm, timestamp)` bị loại: **568.890 dòng**.
   - Không có ISBN/ASIN chung giữa hai bảng, nên không thể xác minh từng cặp
     sách–review là cùng một ấn bản.
+  - 20 review có `review_year = 1969` (timestamp không hợp lệ) vẫn nằm trong
+    `reviews_clean`; cần lọc `review_year >= 1995` nếu muốn loại bỏ.
 - Cách xử lý:
   - Ghi cả hai tỷ lệ (exact 98,27%, normalized 100%) và số dòng bị dedup vào báo
     cáo, `dq_report` và dashboard.
