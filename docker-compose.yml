@@ -20,8 +20,11 @@ x-spark-common: &spark-common
     POSTGRES_PORT: "5432"
     RAW_BOOKS_PATH: s3a://${MINIO_BUCKET:-raw-data}/raw/books/
     RAW_REVIEWS_PATH: s3a://${MINIO_BUCKET:-raw-data}/raw/reviews/
-    PROCESSED_DIR: /opt/data/processed
-    BAD_RECORDS_DIR: /opt/data/bad_records
+    # Processed layer lives in its own MinIO bucket, separate from raw.
+    PROCESSED_DIR: s3a://${MINIO_PROCESSED_BUCKET:-processed-data}/processed
+    BAD_RECORDS_DIR: s3a://${MINIO_PROCESSED_BUCKET:-processed-data}/bad_records
+    # Small JSON reports stay on the shared local mount.
+    REPORTS_DIR: /opt/data/reports
   volumes:
     - ./spark/jobs:/opt/spark/jobs
     - ./spark/event-logs:/opt/spark/event-logs

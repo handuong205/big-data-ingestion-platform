@@ -22,13 +22,20 @@ Spark được cấu hình theo mô hình Master và hai Worker trong `docker-co
 Python Ingestion
         |
         v
-MinIO — raw-data/raw/books/, raw-data/raw/reviews/
+MinIO Raw Layer — raw-data/raw/books/, raw-data/raw/reviews/
         |
         v
-Apache Spark — ETL / Analytics
+Apache Spark Job 1 — làm sạch
         |
         v
-PostgreSQL
+MinIO Processed Layer — processed-data/processed/ (Parquet),
+                        processed-data/bad_records/
+        |
+        v
+Apache Spark Job 2a, 2b — Analytics
+        |
+        v
+PostgreSQL (Serving Layer)
         |
         v
 Metabase Dashboard
@@ -55,8 +62,9 @@ Assignment/
 │   └── Dockerfile
 ├── data/                        # không commit
 │   ├── raw/                     # CSV tải từ Kaggle
-│   ├── processed/               # Parquet đã làm sạch
-│   └── bad_records/             # bản ghi bị loại
+│   ├── processed/               # chỉ dùng khi chạy Spark local; pipeline ghi lên MinIO
+│   ├── bad_records/             # như trên
+│   └── reports/                 # join_match.json của Job 2a
 ├── ingestion/
 │   ├── requirements.txt
 │   ├── download_kaggle_dataset.py

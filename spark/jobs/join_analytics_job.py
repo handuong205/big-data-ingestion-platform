@@ -208,13 +208,12 @@ def solve_q6_reviewer_segments(joined):
 
 def save_join_report(processed_dir, report):
     """Lưu tỷ lệ khớp join ra JSON để dùng trong báo cáo."""
-    if processed_dir.startswith("s3a://") or processed_dir.startswith("s3://"):
-        print("[i] Bỏ qua reports/join_match.json vì processed_dir nằm trên S3A.")
-        return
-
-    reports_dir = os.getenv("REPORTS_DIR") or os.path.join(
-        os.path.dirname(processed_dir), "reports"
-    )
+    reports_dir = os.getenv("REPORTS_DIR")
+    if not reports_dir:
+        if processed_dir.startswith("s3a://") or processed_dir.startswith("s3://"):
+            print("[i] Bỏ qua join_match.json: processed_dir nằm trên S3A và chưa đặt REPORTS_DIR.")
+            return
+        reports_dir = os.path.join(os.path.dirname(processed_dir), "reports")
     os.makedirs(reports_dir, exist_ok=True)
     report_path = os.path.join(reports_dir, "join_match.json")
     with open(report_path, "w", encoding="utf-8") as handle:
