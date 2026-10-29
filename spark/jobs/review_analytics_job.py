@@ -24,7 +24,7 @@ from pyspark.sql.functions import (
     col, count, round as spark_round, avg, row_number, trim,
     when, desc, asc, min as spark_min, max as spark_max
 )
-
+from pyspark.sql import functions as F
 # Dùng chung JDBC writer với Job 2a: truncate=true để giữ DDL/index của
 # postgres/init.sql thay vì DROP TABLE như mode=overwrite mặc định.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -206,6 +206,26 @@ def solve_q5_controversial_or_disappointing_books(df_reviews, base_dir, min_revi
     q5_df.show(10, truncate=40)
     write_to_postgres(q5_df, "book_summary")
 
+def solve_q7_activity_heatmap(df_reviews):
+    """Q7: số review và điểm TB theo tháng × thứ trong tuần (1 = Chủ nhật, theo Spark)."""
+    day_names = F.array(*[F.lit(d) for d in (
+        "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")])
+    heatmap = (
+        df_reviews
+        .filter(col("review_month").isNotNull() & col("review_day_of_week").isNotNull())
+        .groupBy("review_month", col("review_day_of_week").alias("day_of_week"))
+        .agg(
+            count("*").alias("total_reviews"),
+            spark_round(avg("score"), 2).alias("avg_score"),
+        )
+        .withColumn("month_name", F.date_format(
+            F.make_date(F.lit(2000), col("review_month"), F.lit(1)), "MMMM"))
+        .withColumn("day_name", F.element_at(day_names, col("day_of_week")))
+        .select("review_month", "month_name", "day_of_week", "day_name",
+                "total_reviews", "avg_score")
+        .orderBy("review_month", "day_of_week")
+    )
+    write_to_postgres(heatmap, "agg_activity_heatmap")
 
 def main():
     start_time = time.time()
@@ -243,6 +263,9 @@ def main():
         
         # 3. Thực thi Câu hỏi Q5
         solve_q5_controversial_or_disappointing_books(df_reviews, base_dir, min_reviews=20)
+
+        # 4. Thực thi Câu hỏi Q7 (Activity Heatmap)
+        solve_q7_activity_heatmap(df_reviews)
         
         elapsed = time.time() - start_time
         print(f"\n[✓] Hoàn tất toàn bộ PySpark Job 2b trong {elapsed:.2f} giây!")

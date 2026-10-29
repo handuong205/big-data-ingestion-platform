@@ -183,9 +183,15 @@ def main() -> int:
     parser.add_argument(
         "--skip-verify", action="store_true", help="Skip re-reading objects to check sha256."
     )
+    parser.add_argument(
+        "--buckets-only",
+        action="store_true",
+        help="Only create the raw and processed buckets, upload nothing.",
+    )
     args = parser.parse_args()
 
     bucket = os.getenv("MINIO_BUCKET", "raw-data")
+    processed_bucket = os.getenv("MINIO_PROCESSED_BUCKET", "processed-data")
     s3 = boto3.client(
         "s3",
         endpoint_url=os.getenv("MINIO_ENDPOINT", "http://localhost:9000"),
@@ -193,7 +199,12 @@ def main() -> int:
         aws_secret_access_key=os.environ["MINIO_ROOT_PASSWORD"],
         region_name="us-east-1",
     )
+    # Raw and processed data live in separate buckets; Spark writes the
+    # processed one through S3A, which cannot create buckets itself.
     ensure_bucket(s3, bucket)
+    ensure_bucket(s3, processed_bucket)
+    if args.buckets_only:
+        return 0
 
     run_id = uuid.uuid4().hex[:12]
     failed = False

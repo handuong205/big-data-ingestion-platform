@@ -13,6 +13,9 @@ data/bad_records/*
 data/reports/*
 data/kagglehub/*
 
+# archify
+.archify
+archify
 
 # Logs and outputs
 ingestion/logs/*

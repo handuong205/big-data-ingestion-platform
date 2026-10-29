@@ -70,7 +70,7 @@ Script chạy lần lượt 7 bước, dừng ngay khi một bước lỗi và g
 | `infra` | Build image MinIO (từ source) và Spark (kèm jar S3A + JDBC) nếu chưa có, khởi động cụm, chờ MinIO/Postgres healthy và đủ 2 Spark worker | 5–15 phút |
 | `download` | Tải dataset từ Kaggle về `data/raw/` (bỏ qua nếu đã có) | Tùy mạng |
 | `ingest` | Nạp 2 file CSV lên MinIO, kiểm tra SHA-256 và số dòng | ~2–3 phút |
-| `clean` | Spark Job 1: làm sạch, ghi Parquet vào `data/processed/`, bản ghi lỗi vào `data/bad_records/` | ~6 phút |
+| `clean` | Spark Job 1: làm sạch, ghi Parquet vào MinIO `processed-data/processed/`, bản ghi lỗi vào `processed-data/bad_records/` | ~6 phút |
 | `review_analytics` | Spark Job 2b: phân tích review, ghi vào PostgreSQL | ~2 phút |
 | `join_analytics` | Spark Job 2a: join sách với review, ghi Q1/Q2/Q6 vào PostgreSQL | ~3 phút |
 | `reconcile` | Đối soát số dòng `raw = clean + bad + dedup` | ~1 phút |
@@ -99,7 +99,7 @@ python .\ingestion\ingest.py                         # chỉ nạp lên MinIO
 |---|---|---|
 | Spark Master UI | http://localhost:8080 | 2 worker *ALIVE*, các application ở mục *Completed* |
 | Spark Job UI | http://localhost:4040 | Chỉ có khi một job đang chạy (DAG, Stage, Task) |
-| MinIO Console | http://localhost:9001 | Bucket `raw-data` có `raw/books/books_data.csv`, `raw/reviews/Books_rating.csv` |
+| MinIO Console | http://localhost:9001 | Bucket `raw-data` có `raw/books/books_data.csv`, `raw/reviews/Books_rating.csv`; bucket `processed-data` có `processed/books_clean/`, `processed/reviews_clean/` (chia theo `review_year`) và `bad_records/` |
 | Metabase | http://localhost:3000 | Dashboard (xem mục 7) |
 
 Đăng nhập MinIO bằng `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` trong `.env`.
