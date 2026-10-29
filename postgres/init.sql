@@ -132,3 +132,17 @@ CREATE INDEX IF NOT EXISTS idx_top_helpful
     ON top_helpful_reviews (review_year, rank);
 CREATE INDEX IF NOT EXISTS idx_book_summary_score
     ON book_summary (avg_score, total_reviews DESC);
+
+-- ---------------------------------------------------------------- Heatmap (TV4 / BI)
+
+CREATE TABLE IF NOT EXISTS agg_activity_heatmap (
+    review_month      INTEGER,
+    month_name        TEXT,
+    day_of_week       INTEGER, -- 1: Sunday, 2: Monday, ..., 7: Saturday (Spark convention)
+    day_name          TEXT,
+    total_reviews     BIGINT,
+    avg_score         DOUBLE PRECISION
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_heatmap
+    ON agg_activity_heatmap (review_month, day_of_week);
