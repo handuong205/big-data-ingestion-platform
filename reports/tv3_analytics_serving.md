@@ -8,7 +8,8 @@
 
 ## 1. Job 2a làm gì
 
-1. Đọc `reviews_clean` và `books_clean` do Job 1 (TV2) ghi ra Parquet.
+1. Đọc `reviews_clean` và `books_clean` do Job 1 (TV2) ghi ra Parquet trên
+   MinIO Processed Layer (`s3a://processed-data/processed/`) qua S3A.
 2. Join theo khoá chuẩn hoá `title_norm`. Bảng sách là bảng chiều nhỏ nên dùng
    **broadcast join**; bảng sách được khử trùng theo `title_norm` trước khi join
    để tránh fan-out.
@@ -182,7 +183,7 @@ cùng một tác giả, cho thấy giới hạn của việc gộp theo chuỗi 
 | >20 review | 6.136 | 364.736 | 4,26 | 7,25 |
 
 Q6 chỉ tính trên 2.017.997 review có `User_id` (83,01% tổng review sạch);
-18,73% review còn lại thiếu `User_id` nên không được phân nhóm.
+16,99% review còn lại (412.905 review) thiếu `User_id` nên không được phân nhóm.
 
 ### 3.3. Kiểm tra lệch dữ liệu (skew)
 
@@ -200,6 +201,36 @@ Q6 chỉ tính trên 2.017.997 review có `User_id` (83,01% tổng review sạch
 Dữ liệu lệch mạnh về một số ít sách và user. Vì vậy khi đọc Q1/Q2/Q6 phải nhớ
 điểm trung bình bị chi phối bởi các nhóm này; bảng tổng hợp giữ `total_reviews`
 để người đọc thấy trọng số.
+
+### 3.4. Đối chiếu số liệu PostgreSQL với Spark
+
+So số dòng Spark in ra trong log (`logs/pipeline_20261019_215616.log`, lần
+chạy đọc dữ liệu từ MinIO) với số dòng thực tế trong PostgreSQL sau khi ghi:
+
+| Bảng | Spark (log) | PostgreSQL (`count(*)`) | Khớp |
+|---|---:|---:|:-:|
+| `agg_category_year` | 52.508 | 52.508 | ✅ |
+| `agg_author` | 12.215 | 12.215 | ✅ |
+| `agg_publisher` | 3.325 | 3.325 | ✅ |
+| `agg_reviewer_segment` | 4 | 4 | ✅ |
+
+Kiểm tra chéo thêm:
+
+- `SUM(total_reviews)` của `agg_reviewer_segment` = 2.017.997, đúng bằng số
+  review có `User_id` (83,01% của 2.430.902).
+- Bảng `dq_report` ghi `join_reviews_matched` = 2.430.902 và
+  `join_books_matched` = 207.065, khớp với `data/reports/join_match.json`.
+
+Truy vấn dùng để đối chiếu:
+
+```sql
+SELECT 'agg_category_year', count(*) FROM agg_category_year UNION ALL
+SELECT 'agg_author', count(*) FROM agg_author UNION ALL
+SELECT 'agg_publisher', count(*) FROM agg_publisher UNION ALL
+SELECT 'agg_reviewer_segment', count(*) FROM agg_reviewer_segment;
+SELECT sum(total_reviews) FROM agg_reviewer_segment;
+SELECT metric_name, metric_value FROM dq_report ORDER BY 1;
+```
 
 ## 4. Trade-off
 

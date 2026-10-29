@@ -169,7 +169,9 @@ def solve_q6_reviewer_segments(joined):
     """
     Q6: phân nhóm người đánh giá theo User_id.
 
-    User_id đầy đủ trong dữ liệu nên câu hỏi nâng cao này được thực hiện.
+    User_id thiếu khoảng 17% (412.905 / 2.430.902 review sạch). Mức thiếu này
+    vẫn chấp nhận được nên câu hỏi nâng cao này được thực hiện, nhưng chỉ tính
+    trên ~83% review có User_id; kết quả không đại diện cho review ẩn danh.
     Tính trên từng user trước, rồi gộp theo dải số review/user. Cách tính
     avg_score và avg_helpful_votes có trọng số theo số review (không phải
     trung bình cộng của các trung bình).

@@ -1,17 +1,17 @@
 # BDT301 — Big Data Assignment
 
-Dự án xây dựng pipeline Big Data sử dụng Docker Compose, MinIO, Apache Spark, PostgreSQL và Metabase.
+Dự án xây dựng pipeline Big Data phân tích review sách Amazon, sử dụng Docker Compose, MinIO, Apache Spark, PostgreSQL và Metabase.
 
 ## Tổng quan hệ thống
 
 | Service | Image / nguồn build | Vai trò |
 |---|---|---|
-| Apache Spark | `apache/spark:3.5.6-python3` + jar S3A/JDBC (`spark/Dockerfile`) | Xử lý dữ liệu phân tán |
-| MinIO | Build tại máy từ source (`minio/Dockerfile`) | Lưu trữ dữ liệu CSV thô (Raw Layer) |
-| PostgreSQL | `postgres:16.15` | Lưu kết quả phân tích (Serving Layer) |
+| Apache Spark | `apache/spark:3.5.6-python3` + jar S3A/JDBC (`spark/Dockerfile`) | Xử lý dữ liệu phân tán (1 Master + 2 Worker) |
+| MinIO | Build tại máy từ source (`minio/Dockerfile`) | Object storage: Raw Layer (`raw-data`) và Processed Layer (`processed-data`) |
+| PostgreSQL | `postgres:16.15` | Lưu bảng tổng hợp (Serving Layer) |
 | Metabase | `metabase/metabase:v0.63.20.2` | Trực quan hóa dữ liệu |
 
-Spark được cấu hình theo mô hình Master và hai Worker trong `docker-compose.yml`.
+Sơ đồ kiến trúc chi tiết: [`reports/system_architecture_diagram.png`](reports/system_architecture_diagram.png).
 
 ## Kiến trúc dữ liệu
 
@@ -19,42 +19,36 @@ Spark được cấu hình theo mô hình Master và hai Worker trong `docker-co
 2 CSV source files (books_data.csv, Books_rating.csv)
         |
         v
-Python Ingestion
+Python Ingestion (ingest.py: checksum, đếm dòng, không nạp trùng)
         |
         v
 MinIO Raw Layer — raw-data/raw/books/, raw-data/raw/reviews/
         |
         v
-Apache Spark Job 1 — làm sạch
+Apache Spark Job 1 — làm sạch, kiểm tra chất lượng
         |
         v
-MinIO Processed Layer — processed-data/processed/ (Parquet),
+MinIO Processed Layer — processed-data/processed/ (Parquet, partition theo review_year)
                         processed-data/bad_records/
         |
         v
-Apache Spark Job 2a, 2b — Analytics
+Apache Spark Job 2a (join sách × review), Job 2b (phân tích review)
         |
         v
-PostgreSQL (Serving Layer)
+PostgreSQL (Serving Layer, bảng tổng hợp + index)
         |
         v
-Metabase Dashboard
+Dashboard / queries.sql
 ```
 
-## Phạm vi Data Infrastructure & Ingestion
-
-- Khởi chạy và quản lý các service bằng Docker Compose.
-- Build MinIO từ source tại máy.
-- Thu nạp các file CSV vào MinIO Raw Layer.
-- Ghi nhận thời gian, dung lượng và checksum trong quá trình ingestion.
-- Chuẩn bị hạ tầng để tích hợp Spark ETL, analytics và dashboard.
-
-## Cấu trúc repository tham khảo
+## Cấu trúc repository
 
 ```text
 Assignment/
 ├── docker-compose.yml
 ├── run_pipeline.sh              # chạy toàn bộ pipeline bằng một lệnh
+├── queries.sql                  # truy vấn kết quả Q1–Q6 trên PostgreSQL
+├── FINAL_REPORT.md              # báo cáo tổng hợp
 ├── .env.example
 ├── README.md
 ├── SETUP.md
@@ -68,137 +62,143 @@ Assignment/
 ├── ingestion/
 │   ├── requirements.txt
 │   ├── download_kaggle_dataset.py
-│   ├── ingest.py                # nạp CSV vào MinIO
-│   └── logs/
+│   ├── ingest.py                # nạp CSV vào MinIO, tạo bucket
+│   └── logs/                    # ingestion.jsonl, reconciliation.json
 ├── spark/
 │   ├── Dockerfile
 │   ├── jobs/
-│   └── event-logs/
+│   │   ├── schemas.py           # schema tường minh cho 2 file CSV
+│   │   ├── eda_survey.py        # khảo sát chất lượng dữ liệu
+│   │   ├── export_sample.py     # xuất mẫu Parquet 10k dòng
+│   │   ├── clean_data_job.py    # Job 1: làm sạch
+│   │   ├── review_analytics_job.py  # Job 2b: Q3, Q4, Q5
+│   │   ├── join_analytics_job.py    # Job 2a: Q1, Q2, Q6
+│   │   ├── serving.py           # JDBC writer dùng chung
+│   │   └── reconcile_counts.py  # đối soát số dòng
+│   └── event-logs/              # Spark event log (bằng chứng thực thi)
 ├── postgres/
-│   └── init.sql
+│   └── init.sql                 # DDL + index của Serving Layer
 ├── logs/                        # log của run_pipeline.sh
-└── reports/
+└── reports/                     # báo cáo thành viên, sơ đồ, ảnh minh chứng
 ```
 
 Không commit file `.env`, mật khẩu hoặc dữ liệu CSV lên GitHub.
 
-## Bắt đầu nhanh
+## Bắt đầu nhanh & thứ tự thực thi
 
 1. Cài Docker Desktop (Compose v2), Git (kèm Git Bash) và Python 3.10+.
-2. Clone repository, chuyển sang branch `dev`.
-3. `copy .env.example .env`, điền mật khẩu và `KAGGLE_API_TOKEN`.
-4. `python -m pip install -r ingestion/requirements.txt`
-5. Trong **Git Bash**, tại thư mục gốc:
-
-   ```bash
-   ./run_pipeline.sh
-   ```
-
-   Một lệnh chạy toàn bộ: dựng cụm Docker → tải dữ liệu Kaggle → nạp vào MinIO → làm sạch → phân tích → ghi PostgreSQL → đối soát số dòng.
-
-**Lưu ý về MinIO:** MinIO được build tại máy từ source. Không chạy `docker compose pull` thông thường. Chi tiết từng bước, kiểm tra kết quả và xử lý lỗi nằm trong [`SETUP.md`](SETUP.md).
-
-## Nguồn dữ liệu & Thư viện bên ngoài
-
-### 1. Tập dữ liệu gốc (Kaggle Dataset)
-- **Tên dataset:** [Amazon Books Reviews](https://www.kaggle.com/datasets/mohamedbakhet/amazon-books-reviews)
-- **Dung lượng thô:** ~3 GB CSV (> 3,2 triệu bản ghi).
-- **Các tệp tin thành phần:**
-  - `books_data.csv` (212.404 dòng): Chứa siêu dữ liệu sách (`Title`, `authors`, `categories`, `publisher`, `publishedDate`,...).
-  - `Books_rating.csv` (3.000.000 dòng): Chứa thông tin đánh giá độc giả (`Id`, `Title`, `Price`, `User_id`, `review/score`, `review/time`, `review/helpfulness`, `review/text`,...).
-- **Cơ chế thu thập:** Tự động tải qua `kagglehub` trong `ingestion/download_kaggle_dataset.py` thông qua API Token được cấu hình trong `.env`.
-
-### 2. Thư viện & Trình kết nối bên ngoài (External Dependencies & Drivers)
-- **Apache Spark Containers:**
-  - Base Image: `apache/spark:3.5.6-python3`
-  - Hadoop-AWS Connector: `hadoop-aws-3.3.4.jar`
-  - AWS SDK: `aws-java-sdk-bundle-1.12.262.jar` (tương thích giao thức S3A kết nối MinIO)
-  - PostgreSQL JDBC Driver: `postgresql-42.6.0.jar`
-- **Python Host & Ingestion:**
-  - `boto3==1.34.84` (MinIO S3 Client API)
-  - `kagglehub==0.2.7` (Tải dữ liệu tự động)
-  - `python-dotenv==1.0.1` (Nạp biến môi trường)
-
----
-
-## Bắt đầu nhanh & Thứ tự thực thi
-
-1. Cài Docker Desktop (Compose v2), Git (kèm Git Bash) và Python 3.10+.
-2. Clone repository, chuyển sang branch `dev` (hoặc nhánh tính năng):
+2. Clone repository và chuyển sang branch `dev`:
    ```bash
    git clone https://github.com/handuong205/big-data-ingestion-platform.git
    cd big-data-ingestion-platform
    git checkout dev
    ```
-3. Tạo file môi trường: `copy .env.example .env` (trên Windows) hoặc `cp .env.example .env`, điền mật khẩu và `KAGGLE_API_TOKEN`.
-4. Cài thư viện Ingestion:
+3. Tạo file môi trường: `copy .env.example .env` (Windows) hoặc `cp .env.example .env`, rồi điền mật khẩu và `KAGGLE_API_TOKEN`.
+4. Cài thư viện cho các script chạy trên máy host:
    ```bash
    python -m pip install -r ingestion/requirements.txt
    ```
-5. Trong **Git Bash**, tại thư mục gốc chạy một lệnh duy nhất:
+5. Trong **Git Bash**, tại thư mục gốc:
    ```bash
    ./run_pipeline.sh
    ```
 
-Toàn bộ pipeline sẽ tự động thực thi tuần tự:
+Script chạy lần lượt 7 bước và dừng ngay khi một bước lỗi:
+
+```text
+infra → download → ingest → clean → review_analytics → join_analytics → reconcile
 ```
-Dựng cụm Docker ──> Tải Kaggle CSV ──> Nạp MinIO Raw ──> Job 1 Làm sạch (Parquet) ──> Job 2a & 2b Phân tích ──> Ghi Serving Postgres ──> Đối soát số dòng
-```
 
----
+| Bước | Việc làm |
+|---|---|
+| `infra` | Dựng cụm Docker, tạo bucket `raw-data` và `processed-data`, áp dụng `postgres/init.sql` |
+| `download` | Tải 2 file CSV từ Kaggle (bỏ qua nếu đã có trong `data/raw/`) |
+| `ingest` | Nạp CSV lên MinIO Raw Layer, kiểm tra SHA-256 và số dòng |
+| `clean` | Spark Job 1: ghi Parquet sạch và bad_records lên MinIO Processed Layer |
+| `review_analytics` | Spark Job 2b: Q3, Q4, Q5 → PostgreSQL |
+| `join_analytics` | Spark Job 2a: Q1, Q2, Q6 + tỷ lệ khớp join → PostgreSQL |
+| `reconcile` | Đối soát `raw = clean + bad + dedup` cho cả 2 bảng |
 
-## Kết quả kỳ vọng sau khi chạy Pipeline (Expected Outputs)
+Chạy lại từ một bước: `./run_pipeline.sh --from clean`; chạy một bước: `./run_pipeline.sh --only ingest`; xem danh sách bước: `./run_pipeline.sh --list`.
 
-Sau khi `run_pipeline.sh` thực thi thành công, hệ thống cam kết đạt các chỉ số đo đạc thực nghiệm:
+**Lưu ý về MinIO:** MinIO được build tại máy từ source, không chạy `docker compose pull`. Chi tiết từng bước, kiểm tra kết quả và xử lý lỗi nằm trong [`SETUP.md`](SETUP.md).
 
-| Chỉ số / Bảng Serving | Kết quả đo đạc thực tế | Ý nghĩa kiểm định |
+## Nguồn dữ liệu & thư viện bên ngoài
+
+### 1. Tập dữ liệu gốc
+- **Dataset:** [Amazon Books Reviews](https://www.kaggle.com/datasets/mohamedbakhet/amazon-books-reviews) (Kaggle, tác giả Mohamed Bakhet).
+- **Dung lượng:** khoảng 3 GB CSV, tổng cộng 3.212.404 bản ghi.
+  - `books_data.csv` (181 MB, 212.404 dòng): thông tin sách (`Title`, `authors`, `categories`, `publisher`, `publishedDate`, ...).
+  - `Books_rating.csv` (2,86 GB, 3.000.000 dòng): review của độc giả (`Id`, `Title`, `Price`, `User_id`, `review/score`, `review/time`, `review/helpfulness`, `review/text`, ...).
+- **Cách lấy dữ liệu:** tải tự động bằng `kagglehub` trong `ingestion/download_kaggle_dataset.py`, dùng API token trong `.env`.
+
+### 2. Thư viện và driver
+- **Spark containers** (`spark/Dockerfile`):
+  - Base image: `apache/spark:3.5.6-python3` (Hadoop 3.3.4)
+  - `hadoop-aws-3.3.4.jar` và `aws-java-sdk-bundle-1.12.262.jar`: kết nối MinIO qua S3A
+  - `postgresql-42.7.4.jar`: PostgreSQL JDBC driver
+- **Python trên máy host** (`ingestion/requirements.txt`, chưa ghim phiên bản):
+  - `boto3`: S3 client để nạp dữ liệu và tạo bucket trên MinIO
+  - `kagglehub[pandas-datasets]`: tải dataset
+  - `python-dotenv`: nạp biến môi trường từ `.env`
+
+## Kết quả kỳ vọng sau khi chạy pipeline
+
+Số liệu đo trên dữ liệu đầy đủ:
+
+| Chỉ số | Kết quả | Ghi chú |
 |---|---|---|
-| **Thời gian chạy toàn bộ** | ~1.475 giây (~24,6 phút) | Đo đạc trên máy tính cá nhân 16 GB RAM |
-| **Bảng sách sạch (`books_clean`)** | **207.065 dòng** | Đã loại 1 dòng rỗng và khử 5.338 dòng trùng `title_norm` |
-| **Bảng review sạch (`reviews_clean`)** | **2.430.902 dòng** | Đã loại 208 dòng lỗi và khử 568.890 dòng trùng lặp |
-| **Bản ghi có `User_id`** | **2.017.997 dòng (83,01%)** | Phân bổ thành 4 tầng hoạt động trong `agg_reviewer_segment` |
-| **Bản ghi khuyết `User_id`** | **412.905 dòng (16,99%)** | Được theo dõi riêng biệt, tránh bóp méo mô hình gợi ý |
-| **Tỷ lệ khớp Join (`title_norm`)** | **100,00%** | Broadcast Join thành công giữa review sạch và sách sạch |
-| **Đối soát số dòng (Reconciliation)** | **100,00% PASSED** | $\text{Raw} = \text{Clean} + \text{Bad Records} + \text{Trùng lặp}$ |
+| Thời gian chạy | ~25 phút cho lần chạy đầu (gồm tải và nạp dữ liệu); ~10 phút khi chạy lại từ `clean` | Phụ thuộc cấu hình máy |
+| `books_clean` | 207.065 dòng | Loại 1 dòng lỗi, bỏ 5.338 dòng trùng `title_norm` |
+| `reviews_clean` | 2.430.902 dòng | Loại 208 dòng lỗi, bỏ 568.890 dòng trùng |
+| Review có `User_id` | 2.017.997 dòng (83,01%) | Dùng cho Q6 (`agg_reviewer_segment`) |
+| Review thiếu `User_id` | 412.905 dòng (16,99%) | Không tính vào Q6 |
+| Tỷ lệ khớp join (`title_norm`) | 100% review, 100% sách | Lưu trong `data/reports/join_match.json` và bảng `dq_report` |
+| Đối soát số dòng | PASS cho cả 2 bảng | Lưu trong `ingestion/logs/reconciliation.json` |
 
----
+Các bảng được tạo trong PostgreSQL:
 
-## Tái lập kết quả độc lập bằng `queries.sql` (Không phụ thuộc GUI)
+| Bảng | Câu hỏi | Job |
+|---|---|---|
+| `agg_category_year` | Q1: điểm và số review theo thể loại × năm | 2a |
+| `agg_author`, `agg_publisher` | Q2: top tác giả, nhà xuất bản (≥ 30 review) | 2a |
+| `agg_price_band`, `agg_review_length_band` | Q3: giá và độ dài review so với điểm | 2b |
+| `top_helpful_reviews` | Q4: top 10 review hữu ích nhất mỗi năm | 2b |
+| `book_summary` | Q5: sách có nhiều review điểm thấp | 2b |
+| `agg_reviewer_segment` | Q6: phân nhóm người đánh giá | 2a |
+| `dq_report` | Chỉ số chất lượng join | 2a |
 
-Nhằm đảm bảo tính tái lập (Reproducibility) phục vụ hội đồng chấm đồ án, toàn bộ kết quả phân tích (Q1 đến Q6 và Heatmap chu kỳ) được lưu trữ độc lập trong file [`queries.sql`](queries.sql).
+## Tái lập kết quả bằng `queries.sql`
 
-Thực hiện kiểm thử tái lập ngay trên terminal mà không cần cấu hình Metabase:
+[`queries.sql`](queries.sql) chứa các truy vấn trả lời Q1–Q6. Chạy trực tiếp trên PostgreSQL, không cần giao diện:
 
 ```bash
-# Thực thi trực tiếp vào container PostgreSQL
-docker compose exec -T postgres psql -U postgres -d amazon_books -f queries.sql
+docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < queries.sql
 ```
 
-File tích hợp sẵn truy vấn kiểm tra toàn vẹn Checksum tự động:
-- Trả về: **`PASSED: DATA MATCHES 100% PRODUCTION BENCHMARK (2,017,997 / 412,905)`**
-- Thời gian thực thi toàn bộ các câu hỏi: **< 0,5 giây** nhờ hệ thống chỉ mục (Indexes) tối ưu.
+File được đẩy vào container qua stdin, nên không cần mount `queries.sql`. User và database lấy theo `POSTGRES_USER` và `POSTGRES_DB` trong `.env`.
 
----
+> **Lưu ý:** phần heatmap trong `queries.sql` đọc bảng `agg_activity_heatmap`. Hiện chưa có Spark job nào ghi bảng này, nên phần heatmap sẽ báo lỗi hoặc trả về rỗng cho tới khi job tương ứng được bổ sung.
 
 ## Các giao diện dịch vụ cục bộ
 
-Các URL dưới đây hoạt động khi các container đang chạy:
+Các URL dưới đây hoạt động khi container đang chạy:
 
-| Dịch vụ | URL | Thông tin đăng nhập mặc định |
+| Dịch vụ | URL | Đăng nhập / ghi chú |
 |---|---|---|
-| MinIO Console | http://localhost:9001 | Cấu hình trong `.env` (`MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`) |
-| Spark Master UI | http://localhost:8080 | Xem DAG, Job, Stage và trạng thái 2 Worker |
-| Metabase BI | http://localhost:3000 | Kết nối cơ sở dữ liệu Serving `amazon_books` |
-| PostgreSQL | `localhost:5432` | User: `postgres`, Database: `amazon_books` |
+| MinIO Console | http://localhost:9001 | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` trong `.env` |
+| MinIO API | http://localhost:9000 | Endpoint S3 |
+| Spark Master UI | http://localhost:8080 | Trạng thái 2 Worker và các ứng dụng đã chạy |
+| Spark Worker UI | http://localhost:8081, http://localhost:8082 | |
+| Spark Application UI | http://localhost:4040 | Chỉ có khi một job đang chạy: DAG, Job, Stage |
+| Metabase | http://localhost:3000 | Khi thêm database: host `postgres`, port `5432`, database/user/password theo `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` trong `.env` |
+| PostgreSQL | `localhost:5432` | `POSTGRES_USER` / `POSTGRES_PASSWORD`, database `POSTGRES_DB` |
 
----
+## Tài liệu dự án
 
-## Tài liệu kỹ thuật dự án
-
-- **[`FINAL_REPORT.md`](FINAL_REPORT.md)** — **Báo cáo tổng hợp đồ án nhóm 4 người (5–8 trang chuẩn học thuật)**: Kiến trúc, Data Quality, tối ưu PySpark, Phân tích nghiệp vụ sâu và Đối soát hệ thống.
-- **[`docs_tv4_insight_and_problem.md`](docs_tv4_insight_and_problem.md)** — **Báo cáo chuyên sâu của TV4**: Đặt vấn đề nghiệp vụ, phân tích 4 yếu tố (Fact, Insight, Recommendation, Limitation) cho từng câu hỏi, và bảng đóng góp TV4.
-- **[`queries.sql`](queries.sql)** — Toàn bộ truy vấn SQL Serving Layer chuẩn ANSI PostgreSQL 16 (Q1–Q6, Heatmap, thẻ KPI).
-- **[`reports/tv3_analytics_serving.md`](reports/tv3_analytics_serving.md)** — Báo cáo tầng Serving Layer, cấu trúc DDL và độ trễ truy vấn (TV3).
-- **[`reports/dq_report.md`](reports/dq_report.md)** — Báo cáo kiểm định chất lượng dữ liệu và đối soát dòng (TV2).
-- **[`SETUP.md`](SETUP.md)** — Hướng dẫn chi tiết từng bước cài đặt, cấu hình `.env`, xử lý sự cố môi trường và chạy pipeline trên máy sạch.
-
+- [`SETUP.md`](SETUP.md) — cài đặt, cấu hình `.env`, chạy pipeline, kiểm tra kết quả và xử lý lỗi.
+- [`FINAL_REPORT.md`](FINAL_REPORT.md) — báo cáo tổng hợp: kiến trúc, chất lượng dữ liệu, xử lý Spark, kết quả phân tích và trade-off.
+- [`docs_tv4_insight_and_problem.md`](docs_tv4_insight_and_problem.md) — đặt vấn đề nghiệp vụ và phân tích insight cho từng câu hỏi (TV4).
+- [`reports/dq_report.md`](reports/dq_report.md) — báo cáo chất lượng dữ liệu và đối soát số dòng (TV2).
+- [`reports/tv3_analytics_serving.md`](reports/tv3_analytics_serving.md) — Job 2a, thiết kế Serving Layer và độ trễ truy vấn (TV3).
+- [`docs.md`](docs.md) — phân công công việc 4 thành viên.
