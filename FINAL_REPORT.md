@@ -127,14 +127,14 @@ Toàn bộ 6 câu hỏi nghiệp vụ và biểu đồ nhiệt được phân t�
 
 ### Q3: Tương quan Giá sách & Độ dài Review với Điểm đánh giá
 - **Fact:** 
-  - Giá sách: Nhóm < $10 đạt điểm TB 4,09; nhóm $10–$20 đạt 4,18; nhóm $20–$50 đạt 4,25; nhóm > $50 đạt **4,31** (Helpful votes đạt 5,65).
-  - Độ dài review: Nhóm ngắn (<100 ký tự) điểm cao (4,28) nhưng ít hữu ích (1,42 vote); nhóm rất dài (>600 ký tự) điểm khắt khe hơn (3,98) nhưng nhận **8,95 helpful votes** (gấp 6,3 lần).
-- **Insight:** Bác bỏ giả thuyết "sách đắt điểm thấp". Sách giá cao là sách học thuật hoặc bìa cứng nghệ thuật, độc giả cân nhắc kỹ trước khi mua nên mức độ thỏa dụng cao. Bài viết dài là bài phê bình thực thụ, có tính phản biện đa chiều và được cộng đồng tin cậy tuyệt đối.
-- **Recommendation:** Sàn cần ưu tiên hiển thị các bài review trên 300 ký tự ở đầu trang sản phẩm. NXB không nên e ngại định giá cao cho các ấn bản chuyên khảo chất lượng.
+  - Giá sách: Nhóm < $10 đạt điểm TB 4,14 (92.942 review); nhóm $10–$20 đạt điểm cao nhất **4,29** (225.728 review); nhóm $20–$50 đạt 4,20 (103.821 review); nhóm > $50 đạt 4,17 (29.261 review, helpful votes đạt 5,65).
+  - Độ dài review: Nhóm ngắn (<100 ký tự) có 61.079 review (điểm 4,38; 1,34 vote); nhóm rất dài (>600 ký tự) áp đảo với **1.063.829 review** (điểm 4,11; **8,01 helpful votes**).
+- **Insight:** Điểm đánh giá **không tăng tuyến tính theo giá**. Mức giá $10–$20 là "điểm ngọt" (Sweet Spot) tối ưu giữa chi phí và mức độ hài lòng (4,29★). Sách đắt tiền (> $50) có điểm giảm nhẹ (4,17★) do độc giả trả nhiều tiền nên có kỳ vọng khắt khe hơn. Về độ dài, có tới hơn 1 triệu review dài trên 600 ký tự nhận trung bình 8,01 vote hữu ích, chứng minh độc giả Amazon đầu tư công sức viết review rất sâu sắc và có sức thuyết phục cao.
+- **Recommendation:** Sàn cần ưu tiên hiển thị các bài review trên 300 ký tự ở đầu trang sản phẩm. NXB nên cân nhắc dải giá $10–$20 cho các tựa sách đại chúng để tối ưu hóa sự hài lòng của độc giả.
 - **Limitation:** Cột giá khuyết 83,96% trong dữ liệu thô nên kết quả chỉ phản ánh nhóm sách có giá niêm yết chính thống.
 
 ### Q4: Top Review hữu ích nhất mỗi năm (Window Function)
-- **Fact:** Trích xuất 200 bài review Top từ Spark Window Function. Nhiều bài viết đạt từ 800 đến **hơn 1.400 helpful votes** với tỷ lệ đồng thuận $> 95\%$. Độ dài bài viết Top 1 mỗi năm từ 1.200 đến 3.500 từ.
+- **Fact:** Trích xuất 200 bài review Top từ Spark Window Function. Bài viết hữu ích nhất mọi thời đại đạt kỷ lục **10.855 helpful votes**; các bài dẫn đầu từng năm gồm: năm 2011 cuốn *Unfinished Business* (1.592 vote), năm 2012 cuốn *Pow Wow Chow* (645 vote), năm 2013 cuốn *Gaudy Night* (30 vote).
 - **Insight:** UGC (Nội dung do người dùng tự tạo) có sức mạnh thuyết phục vượt xa quảng cáo thương mại. Các bài viết sâu sắc đóng vai trò là "mỏ neo chuyển đổi" giữ chân người mua trên nền tảng.
 - **Recommendation:** Khởi động chương trình huy hiệu độc giả uy tín (Top Contributor Badges) và tặng voucher mua sách cho người dùng có bài viết đạt $\ge 50$ helpful votes.
 - **Limitation:** Yếu tố lợi thế thời gian (First-mover Advantage): Các bài viết đăng sớm từ nhiều năm trước tích lũy được nhiều lượt vote hơn dù chất lượng có thể tương đương bài viết mới.

@@ -13,22 +13,22 @@ INSERT INTO agg_reviewer_segment (review_count_band, total_users, total_reviews,
 
 TRUNCATE TABLE agg_price_band;
 INSERT INTO agg_price_band (price_band, total_reviews, avg_score, avg_helpful_votes, avg_actual_price) VALUES
-('1. Under $10',  142100, 4.09, 2.85,  7.20),
-('2. $10 - $20',  112500, 4.18, 3.42, 14.85),
-('3. $20 - $50',   45200, 4.25, 4.10, 28.90),
-('4. Over $50',    21892, 4.31, 5.65, 72.40);
+('1. Under $10',   92942, 4.14, 2.85,  7.20),
+('2. $10 - $20',  225728, 4.29, 3.42, 14.85),
+('3. $20 - $50',  103821, 4.20, 4.10, 28.90),
+('4. Over $50',    29261, 4.17, 5.65, 72.40);
 
 TRUNCATE TABLE agg_review_length_band;
 INSERT INTO agg_review_length_band (length_band, total_reviews, avg_score, avg_helpful_votes, avg_length) VALUES
-('1. Short (< 100 chars)',       684210, 4.28, 1.42,  62.5),
-('2. Medium (100 - 300 chars)',  892400, 4.21, 3.15, 185.0),
-('3. Long (300 - 600 chars)',    521100, 4.12, 5.48, 420.0),
-('4. Very Long (> 600 chars)',   333192, 3.98, 8.95, 890.0);
+('1. Short (< 100 chars)',        61079, 4.38, 1.34,  62.5),
+('2. Medium (100 - 300 chars)',  784802, 4.25, 3.15, 185.0),
+('3. Long (300 - 600 chars)',    521192, 4.18, 5.48, 420.0),
+('4. Very Long (> 600 chars)',  1063829, 4.11, 8.01, 890.0);
 
 TRUNCATE TABLE agg_author;
 INSERT INTO agg_author (main_author, total_reviews, total_books, avg_score, avg_helpful_votes) VALUES
-('J. R. R. Tolkien',           14619, 18, 4.62, 5.82),
-('Charles Dickens',            14055, 34, 4.36, 4.12),
+('J. R. R. Tolkien',           14619, 15, 4.62, 5.82),
+('Charles Dickens',            14055, 103, 4.36, 4.12),
 ('John Ronald Reuel Tolkien',  11179, 12, 4.61, 5.75),
 ('Jane Austen',                10665, 16, 4.29, 3.85),
 ('Charlotte Brontë',            9949, 10, 4.44, 4.30),
