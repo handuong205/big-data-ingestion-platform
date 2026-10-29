@@ -500,7 +500,7 @@ SELECT
     SUM(CASE WHEN day_of_week = 7 THEN total_reviews ELSE 0 END) AS saturday_reviews,
     SUM(CASE WHEN day_of_week = 1 THEN total_reviews ELSE 0 END) AS sunday_reviews,
     SUM(total_reviews) AS total_month_reviews,
-    ROUND(SUM(total_reviews * avg_score) / NULLIF(SUM(total_reviews), 0), 2) AS month_avg_score
+    ROUND((SUM(total_reviews * avg_score) / NULLIF(SUM(total_reviews), 0))::numeric, 2) AS month_avg_score
 FROM agg_activity_heatmap
 GROUP BY review_month, month_name
 ORDER BY review_month ASC;

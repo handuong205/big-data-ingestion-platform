@@ -127,6 +127,8 @@ step_infra() {
   fi
   wait_healthy minio
   wait_healthy postgres
+  # Bucket processed phải có trước Job 1 (S3A không tự tạo bucket).
+  run "$PYTHON" ingestion/ingest.py --buckets-only
   apply_serving_ddl
   wait_spark_workers 2
 }

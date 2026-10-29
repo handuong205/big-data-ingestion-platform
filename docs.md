@@ -139,33 +139,33 @@
 
 ### A. Làm trước (người khác đang chờ)
 
-- [ ] **DDL Postgres** theo tên bảng đã chốt, chạy được trên Postgres của TV1 → TV4, TV2
+- [x] **DDL Postgres** theo tên bảng đã chốt, chạy được trên Postgres của TV1 → TV4, TV2
   - Bảng: `agg_category_year`, `agg_author`, `agg_publisher`, `agg_price_band`, `top_helpful_reviews`, `book_summary`, `agg_reviewer_segment`, `dq_report`.
   - ← TV1 (Postgres chạy được)
-- [ ] Cấu hình driver JDBC cho Spark, ghi thử một bảng nhỏ → TV2
-- [ ] Chốt định nghĩa Q1, Q2 (ngưỡng số review tối thiểu N) và Q6 → TV4
+- [x] Cấu hình driver JDBC cho Spark, ghi thử một bảng nhỏ → TV2
+- [x] Chốt định nghĩa Q1, Q2 (ngưỡng số review tối thiểu N) và Q6 → TV4
 
 ### B. Bắt buộc còn lại
 
-- [ ] **PySpark Job 2a** `[Đề: ≥ 2 aggregation]`
+- [x] **PySpark Job 2a** `[Đề: ≥ 2 aggregation]`
   - Phát triển trên file mẫu của TV2, rồi chạy dữ liệu đầy đủ khi Job 1 xong. ← TV2
   - Join `reviews_clean` với `books_clean` theo `title_norm` (thử broadcast join vì bảng sách nhỏ), báo cáo tỷ lệ khớp.
   - Q1: điểm trung bình, số review theo thể loại × năm.
   - Q2: top tác giả và nhà xuất bản (nhóm có ≥ N review).
   - Q6 (nâng cao): phân nhóm người đánh giá theo `User_id`, chỉ làm nếu User_id thiếu ít.
-- [ ] Ghi sang Postgres bằng JDBC, chạy lại ghi đè được → TV4
-- [ ] Đối chiếu số liệu Postgres với kết quả Spark.
+- [x] Ghi sang Postgres bằng JDBC, chạy lại ghi đè được → TV4
+- [x] Đối chiếu số liệu Postgres với kết quả Spark.
 
 ### C. Báo cáo và bảo vệ
 
-- [ ] Tạo chỉ mục, đo độ trễ truy vấn.
-- [ ] Kiểm tra lệch dữ liệu (một số sách hoặc người dùng có rất nhiều review).
-- [ ] Trade-off: broadcast join vs shuffle join, PostgreSQL vs ClickHouse.
-- [ ] Nêu 1 vấn đề độ tin cậy: tỷ lệ khớp join thấp, xử lý bằng cách chỉ tính trên phần khớp và ghi rõ giới hạn `[Đề]`.
-- [ ] Viết phần báo cáo:
+- [x] Tạo chỉ mục, đo độ trễ truy vấn.
+- [x] Kiểm tra lệch dữ liệu (một số sách hoặc người dùng có rất nhiều review).
+- [x] Trade-off: broadcast join vs shuffle join, PostgreSQL vs ClickHouse.
+- [x] Nêu 1 vấn đề độ tin cậy: tỷ lệ khớp join thấp, xử lý bằng cách chỉ tính trên phần khớp và ghi rõ giới hạn `[Đề]`.
+- [x] Viết phần báo cáo:
   - Giải thích các phép biến đổi PySpark (join, groupBy, agg, window).
   - Thiết kế bảng ở Serving Layer và độ trễ truy vấn.
-- [ ] Chuẩn bị trả lời:
+- [x] Chuẩn bị trả lời:
   - Vì sao join theo tên sách?
   - Tỷ lệ khớp là bao nhiêu?
   - Vì sao chỉ đưa bảng tổng hợp vào Postgres?

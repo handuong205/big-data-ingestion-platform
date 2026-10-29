@@ -169,7 +169,9 @@ def solve_q6_reviewer_segments(joined):
     """
     Q6: phân nhóm người đánh giá theo User_id.
 
-    User_id đầy đủ trong dữ liệu nên câu hỏi nâng cao này được thực hiện.
+    User_id thiếu khoảng 17% (412.905 / 2.430.902 review sạch). Mức thiếu này
+    vẫn chấp nhận được nên câu hỏi nâng cao này được thực hiện, nhưng chỉ tính
+    trên ~83% review có User_id; kết quả không đại diện cho review ẩn danh.
     Tính trên từng user trước, rồi gộp theo dải số review/user. Cách tính
     avg_score và avg_helpful_votes có trọng số theo số review (không phải
     trung bình cộng của các trung bình).
@@ -208,13 +210,12 @@ def solve_q6_reviewer_segments(joined):
 
 def save_join_report(processed_dir, report):
     """Lưu tỷ lệ khớp join ra JSON để dùng trong báo cáo."""
-    if processed_dir.startswith("s3a://") or processed_dir.startswith("s3://"):
-        print("[i] Bỏ qua reports/join_match.json vì processed_dir nằm trên S3A.")
-        return
-
-    reports_dir = os.getenv("REPORTS_DIR") or os.path.join(
-        os.path.dirname(processed_dir), "reports"
-    )
+    reports_dir = os.getenv("REPORTS_DIR")
+    if not reports_dir:
+        if processed_dir.startswith("s3a://") or processed_dir.startswith("s3://"):
+            print("[i] Bỏ qua join_match.json: processed_dir nằm trên S3A và chưa đặt REPORTS_DIR.")
+            return
+        reports_dir = os.path.join(os.path.dirname(processed_dir), "reports")
     os.makedirs(reports_dir, exist_ok=True)
     report_path = os.path.join(reports_dir, "join_match.json")
     with open(report_path, "w", encoding="utf-8") as handle:

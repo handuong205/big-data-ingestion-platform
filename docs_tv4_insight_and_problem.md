@@ -157,15 +157,15 @@ Từ bảng `agg_author` (12.215 tác giả) và `agg_publisher` (3.325 nhà xu�
 #### a. Dữ liệu thực chứng (Fact / Numbers)
 Từ hai bảng `agg_price_band` và `agg_review_length_band` do TV2 xử lý:
 - **Tương quan theo Phân khúc giá sách (`agg_price_band`):**
-  - `1. Under $10`: 142.100 reviews | Điểm TB: **4,09** | Helpful TB: **2,85** | Giá thực tế TB: $7.20
-  - `2. $10 - $20`: 112.500 reviews | Điểm TB: **4,18** | Helpful TB: **3,42** | Giá thực tế TB: $14.85
-  - `3. $20 - $50`: 45.200 reviews | Điểm TB: **4,25** | Helpful TB: **4,10** | Giá thực tế TB: $28.90
-  - `4. Over $50`: 21.892 reviews | Điểm TB: **4,31** | Helpful TB: **5,65** | Giá thực tế TB: $72.40
+  - `1. Under $10`: 92.942 reviews | Điểm TB: **4,14** | Helpful TB: **2,85** | Giá thực tế TB: $7.20
+  - `2. $10 - $20`: 225.728 reviews | Điểm TB: **4,29 (cao nhất)** | Helpful TB: **3,42** | Giá thực tế TB: $14.85
+  - `3. $20 - $50`: 103.821 reviews | Điểm TB: **4,20** | Helpful TB: **4,10** | Giá thực tế TB: $28.90
+  - `4. Over $50`: 29.261 reviews | Điểm TB: **4,17** | Helpful TB: **5,65** | Giá thực tế TB: $72.40
 - **Tương quan theo Độ dài bài review (`agg_review_length_band`):**
-  - `1. Short (< 100 ký tự)`: 684.210 reviews | Điểm TB: **4,28** | Helpful TB: **1,42**
-  - `2. Medium (100 - 300 ký tự)`: 892.400 reviews | Điểm TB: **4,21** | Helpful TB: **3,15**
-  - `3. Long (300 - 600 ký tự)`: 521.100 reviews | Điểm TB: **4,12** | Helpful TB: **5,48**
-  - `4. Very Long (> 600 ký tự)`: 333.192 reviews | Điểm TB: **3,98** | Helpful TB: **8,95** (gấp 6,3 lần bài ngắn!)
+  - `1. Short (< 100 ký tự)`: 61.079 reviews | Điểm TB: **4,38** | Helpful TB: **1,34**
+  - `2. Medium (100 - 300 ký tự)`: 784.802 reviews | Điểm TB: **4,25** | Helpful TB: **3,15**
+  - `3. Long (300 - 600 ký tự)`: 521.192 reviews | Điểm TB: **4,18** | Helpful TB: **5,48**
+  - `4. Very Long (> 600 ký tự)`: 1.063.829 reviews | Điểm TB: **4,11** | Helpful TB: **8,01** (gấp 6 lần bài ngắn!)
 
 #### b. Ý nghĩa kinh doanh (Business Insights)
 1. **Giá trị cao tạo nên sự tôn trọng (High Price $\rightarrow$ High Commitment):** Trái với giả thuyết ban đầu rằng "sách đắt tiền sẽ bị độc giả soi xét khắt khe và chấm điểm thấp", thực tế chứng minh điều ngược lại: Sách càng đắt tiền điểm trung bình càng tăng (từ 4,09 ở nhóm <$10 lên 4,31 ở nhóm >$50). Lý do: Nhóm sách >$50 chủ yếu là sách học thuật chuyên khảo, sách bìa cứng nghệ thuật (Hardcover art books) hoặc giáo trình đại học. Người mua nhóm này đã tìm hiểu kỹ nhu cầu trước khi bỏ số tiền lớn, và chất lượng in ấn/tri thức của sách giá cao thường vượt trội.
