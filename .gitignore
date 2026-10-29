@@ -29,3 +29,6 @@ spark/jobs/output/
 Thumbs.db
 
 reports/images/
+ 
+# Ignore root working copy of pbix
+/amazon_books_bi_dashboard.pbix

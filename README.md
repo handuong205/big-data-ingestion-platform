@@ -166,6 +166,7 @@ Các bảng được tạo trong PostgreSQL:
 | `top_helpful_reviews` | Q4: top 10 review hữu ích nhất mỗi năm | 2b |
 | `book_summary` | Q5: sách có nhiều review điểm thấp | 2b |
 | `agg_reviewer_segment` | Q6: phân nhóm người đánh giá | 2a |
+| `agg_activity_heatmap` | Heatmap: mật độ review theo Tháng × Thứ trong tuần (84 điểm dữ liệu) | 2b |
 | `dq_report` | Chỉ số chất lượng join | 2a |
 
 ## Tái lập kết quả bằng `queries.sql`
@@ -178,7 +179,7 @@ docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB
 
 File được đẩy vào container qua stdin, nên không cần mount `queries.sql`. User và database lấy theo `POSTGRES_USER` và `POSTGRES_DB` trong `.env`.
 
-> **Lưu ý:** phần heatmap trong `queries.sql` đọc bảng `agg_activity_heatmap`. Hiện chưa có Spark job nào ghi bảng này, nên phần heatmap sẽ báo lỗi hoặc trả về rỗng cho tới khi job tương ứng được bổ sung.
+> **Lưu ý:** Bảng heatmap `agg_activity_heatmap` đã được tích hợp hoàn chỉnh vào Spark Job 2b (`review_analytics_job.py`) và Serving Layer, cung cấp đầy đủ 84 điểm dữ liệu (12 tháng × 7 ngày trong tuần) phục vụ trực quan hóa Heatmap trên Metabase.
 
 ## Các giao diện dịch vụ cục bộ
 
